@@ -101,6 +101,7 @@ export function baseCss(theme: HtmlTheme): string {
 
     * {
       box-sizing: border-box;
+      text-indent: 0 !important;
     }
 
     body {
@@ -217,6 +218,7 @@ export function baseCss(theme: HtmlTheme): string {
 
     .section p {
       margin: 0;
+      text-indent: 0;
     }
 
     .muted {

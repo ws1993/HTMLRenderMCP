@@ -1,6 +1,8 @@
 import type { HtmlPageInput, HtmlSectionInput, HtmlTheme } from "../schemas/htmlPageSchema.js";
 import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
+import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
+import { renderInlineRichText } from "../utils/renderInlineRichText.js";
 
 interface InlineThemeTokens {
   bg: string;
@@ -76,10 +78,35 @@ function getInlineTheme(theme: HtmlTheme): InlineThemeTokens {
 }
 
 function style(rules: Record<string, string | number | undefined>): string {
-  return Object.entries(rules)
+  return Object.entries({ ...rules, "text-indent": "0 !important" })
     .filter(([, value]) => value !== undefined && value !== "")
     .map(([property, value]) => `${property}: ${value}`)
     .join("; ");
+}
+
+function renderInlineCta(
+  cta: { label: string; href?: string } | undefined,
+  theme: InlineThemeTokens
+): string {
+  const href = normalizeRenderableHref(cta?.href);
+
+  if (!cta || !href) {
+    return "";
+  }
+
+  return `<a href="${escapeAttribute(href)}" style="${escapeAttribute(
+    style({
+      display: "inline-block",
+      "margin-top": "16px",
+      padding: "8px 16px",
+      background: theme.primary,
+      color: "#ffffff",
+      "text-decoration": "none",
+      "border-radius": "6px",
+      "font-size": "14px",
+      "font-weight": 500
+    })
+  )}">${escapeHtml(cta.label)}</a>`;
 }
 
 function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens, isFirst: boolean): string {
@@ -112,12 +139,8 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
             <span style="${escapeAttribute(style({ "font-size": "12px", "font-weight": 600, color: theme.muted, "text-transform": "uppercase", "letter-spacing": "0.05em" }))}">HTML Render</span>
           </div>
           <h1 style="${escapeAttribute(style({ margin: "0 0 8px 0", "font-size": "24px", "font-weight": 700, color: theme.text, "line-height": 1.3, "letter-spacing": "-0.02em" }))}">${escapeHtml(section.heading)}</h1>
-          ${section.subheading ? `<p style="${escapeAttribute(style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(section.subheading)}</p>` : ""}
-          ${
-            section.cta
-              ? `<a href="${escapeAttribute(section.cta.href)}" style="${escapeAttribute(style({ display: "inline-block", "margin-top": "16px", padding: "8px 16px", background: theme.primary, color: "#ffffff", "text-decoration": "none", "border-radius": "6px", "font-size": "14px", "font-weight": 500 }))}">${escapeHtml(section.cta.label)}</a>`
-              : ""
-          }
+          ${section.subheading ? `<p style="${escapeAttribute(style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 }))}">${renderInlineRichText(section.subheading)}</p>` : ""}
+          ${renderInlineCta(section.cta, theme)}
         </div>
       `;
 
@@ -126,7 +149,7 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
         <div style="${escapeAttribute(sectionWrapperStyle)}">
           <div style="${escapeAttribute(style({ "margin-bottom": "16px" }))}">
             <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
-            ${section.intro ? `<p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted }))}">${escapeHtml(section.intro)}</p>` : ""}
+            ${section.intro ? `<p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted }))}">${renderInlineRichText(section.intro)}</p>` : ""}
           </div>
           <div style="${escapeAttribute(style({ display: "grid", "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }))}">
             ${section.items.map((item, index) => `
@@ -135,7 +158,7 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                   <span style="${escapeAttribute(style({ display: "flex", "align-items": "center", "justify-content": "center", width: "24px", height: "24px", background: theme.badgeBg, color: theme.badgeText, "border-radius": "6px", "font-size": "12px", "font-weight": 600 }))}">${index + 1}</span>
                   <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text }))}">${escapeHtml(item.title)}</h3>
                 </div>
-                <p style="${escapeAttribute(style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(item.body)}</p>
+                <p style="${escapeAttribute(style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5, "text-indent": 0 }))}">${renderInlineRichText(item.body)}</p>
               </div>
             `).join("")}
           </div>
@@ -147,7 +170,7 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
         <div style="${escapeAttribute(sectionWrapperStyle)}">
           <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
           <div style="${escapeAttribute(style({ "font-size": "14.5px", color: theme.text, "line-height": 1.7, background: theme.bg, padding: "16px", "border-radius": "10px", border: `1px solid ${theme.borderSubtle}` }))}">
-            ${escapeHtml(section.body).replace(/\\n/g, '<br>')}
+            ${renderInlineRichText(section.body)}
           </div>
         </div>
       `;
@@ -165,7 +188,7 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                 </div>
                 <div style="${escapeAttribute(style({ "padding-bottom": index < section.items.length - 1 ? "16px" : "0", "padding-top": "2px" }))}">
                   <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text, "line-height": 1.4 }))}">${escapeHtml(item.title)}</h3>
-                  <p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(item.body)}</p>
+                  <p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${renderInlineRichText(item.body)}</p>
                 </div>
               </div>
             `).join("")}
@@ -184,7 +207,7 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                   ${escapeHtml(item.question)}
                 </summary>
                 <div style="${escapeAttribute(style({ "margin-top": "12px", "padding-top": "12px", "border-top": `1px dashed ${theme.border}`, "font-size": "14px", color: theme.muted, "line-height": 1.6 }))}">
-                  ${escapeHtml(item.answer)}
+                  ${renderInlineRichText(item.answer)}
                 </div>
               </details>
             `).join("")}
@@ -210,17 +233,22 @@ function renderInlineFooter(footer: HtmlPageInput["footer"], theme: InlineThemeT
         })
       )}">
         ${footer.links
-          .map(
-            (link) =>
-              `<a href="${escapeAttribute(link.href)}" style="${escapeAttribute(
-                style({
-                  color: theme.primary,
-                  "font-weight": 500,
-                  "font-size": "13px",
-                  "text-decoration": "none"
-                })
-              )}">${escapeHtml(link.label)}</a>`
-          )
+          .map((link) => {
+            const href = normalizeRenderableHref(link.href);
+
+            if (!href) {
+              return "";
+            }
+
+            return `<a href="${escapeAttribute(href)}" style="${escapeAttribute(
+              style({
+                color: theme.primary,
+                "font-weight": 500,
+                "font-size": "13px",
+                "text-decoration": "none"
+              })
+            )}">${escapeHtml(link.label)}</a>`;
+          })
           .join("")}
       </div>`
     : "";
@@ -236,7 +264,7 @@ function renderInlineFooter(footer: HtmlPageInput["footer"], theme: InlineThemeT
         color: theme.muted
       })
     )}">
-      ${footer.text ? `<p style="${escapeAttribute(style({ margin: 0 }))}">${escapeHtml(footer.text)}</p>` : ""}
+      ${footer.text ? `<p style="${escapeAttribute(style({ margin: 0 }))}">${renderInlineRichText(footer.text)}</p>` : ""}
       ${links}
     </div>
   `;

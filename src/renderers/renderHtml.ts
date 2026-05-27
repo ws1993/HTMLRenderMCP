@@ -1,7 +1,19 @@
 import type { HtmlPageInput } from "../schemas/htmlPageSchema.js";
 import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
+import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
+import { renderInlineRichText } from "../utils/renderInlineRichText.js";
 import { baseCss } from "./templates.js";
+
+function renderCta(cta: { label: string; href?: string } | undefined): string {
+  const href = normalizeRenderableHref(cta?.href);
+
+  if (!cta || !href) {
+    return "";
+  }
+
+  return `<a class="button" href="${escapeAttribute(href)}">${escapeHtml(cta.label)}</a>`;
+}
 
 function renderSection(section: HtmlPageInput["sections"][number]): string {
   switch (section.type) {
@@ -9,14 +21,8 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
       return `
         <header class="section hero">
           <h1>${escapeHtml(section.heading)}</h1>
-          ${section.subheading ? `<p>${escapeHtml(section.subheading)}</p>` : ""}
-          ${
-            section.cta
-              ? `<a class="button" href="${escapeAttribute(section.cta.href)}">${escapeHtml(
-                  section.cta.label
-                )}</a>`
-              : ""
-          }
+          ${section.subheading ? `<p>${renderInlineRichText(section.subheading)}</p>` : ""}
+          ${renderCta(section.cta)}
         </header>
       `;
 
@@ -24,14 +30,14 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
       return `
         <section class="section">
           <h2>${escapeHtml(section.heading)}</h2>
-          ${section.intro ? `<p class="muted">${escapeHtml(section.intro)}</p>` : ""}
+          ${section.intro ? `<p class="muted">${renderInlineRichText(section.intro)}</p>` : ""}
           <div class="grid">
             ${section.items
               .map(
                 (item) => `
                   <article class="card">
                     <h3>${escapeHtml(item.title)}</h3>
-                    <p>${escapeHtml(item.body)}</p>
+                    <p>${renderInlineRichText(item.body)}</p>
                   </article>
                 `
               )
@@ -44,7 +50,7 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
       return `
         <section class="section">
           <h2>${escapeHtml(section.heading)}</h2>
-          <p>${escapeHtml(section.body)}</p>
+          <p>${renderInlineRichText(section.body)}</p>
         </section>
       `;
 
@@ -58,7 +64,7 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
                 (item) => `
                   <article class="step">
                     <h3>${escapeHtml(item.title)}</h3>
-                    <p class="muted">${escapeHtml(item.body)}</p>
+                    <p class="muted">${renderInlineRichText(item.body)}</p>
                   </article>
                 `
               )
@@ -76,7 +82,7 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
               (item) => `
                 <article class="faq-item">
                   <h3>${escapeHtml(item.question)}</h3>
-                  <p class="muted">${escapeHtml(item.answer)}</p>
+                  <p class="muted">${renderInlineRichText(item.answer)}</p>
                 </article>
               `
             )
@@ -94,17 +100,22 @@ function renderFooter(footer: HtmlPageInput["footer"]): string {
   const links = footer.links?.length
     ? `<nav class="footer-links" aria-label="Footer links">
         ${footer.links
-          .map(
-            (link) =>
-              `<a href="${escapeAttribute(link.href)}">${escapeHtml(link.label)}</a>`
-          )
+          .map((link) => {
+            const href = normalizeRenderableHref(link.href);
+
+            if (!href) {
+              return "";
+            }
+
+            return `<a href="${escapeAttribute(href)}">${escapeHtml(link.label)}</a>`;
+          })
           .join("")}
       </nav>`
     : "";
 
   return `
     <footer>
-      ${footer.text ? `<p>${escapeHtml(footer.text)}</p>` : ""}
+      ${footer.text ? `<p>${renderInlineRichText(footer.text)}</p>` : ""}
       ${links}
     </footer>
   `;
