@@ -57,7 +57,12 @@ function parseJsonString(value: unknown): unknown {
   }
 }
 
+const htmlPageArgumentSchema = z.preprocess(parseJsonString, htmlPageSchema);
 const sectionArgumentSchema = z.preprocess(parseJsonString, sectionSchema);
+
+const renderFinalHtmlSchema = z.object({
+  page: htmlPageArgumentSchema
+});
 
 const renderInlineSectionSchema = z.object({
   section: sectionArgumentSchema,
@@ -103,6 +108,8 @@ const liveRemoveSectionSchema = liveSessionSchema.extend({
 const liveExportSchema = liveSessionSchema.extend({
   outputPath: z.string().min(1, "outputPath is required")
 });
+
+const enableInlineSectionTool = process.env.HTML_RENDER_MCP_ENABLE_INLINE_SECTION === "1";
 
 const sectionInputSchema = {
   anyOf: [
@@ -248,6 +255,25 @@ const pageInputSchema = {
       items: sectionInputSchema
     },
     footer: footerInputSchema
+  }
+} as const;
+
+const pageOrJsonStringInputSchema = {
+  anyOf: [
+    pageInputSchema,
+    {
+      type: "string",
+      description:
+        "JSON string containing the complete page object. Prefer passing an object when the client supports it."
+    }
+  ]
+} as const;
+
+const finalHtmlInputSchema = {
+  type: "object",
+  required: ["page"],
+  properties: {
+    page: pageOrJsonStringInputSchema
   }
 } as const;
 
@@ -409,17 +435,27 @@ async function ensurePreviewAndRespond(session: LiveSession): Promise<ReturnType
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
-      name: "render_inline_html",
+      name: "render_final_html",
       description:
-        "Render structured page data into an HTML fragment for Cherry Studio chat messages. After calling this tool, paste the returned HTML directly into the assistant reply without Markdown code fences.",
-      inputSchema: pageInputSchema
+        "Final one-shot renderer for Cherry Studio. Use this only after all searching, reasoning, and content drafting are complete. It accepts the complete page under the page field and returns one continuous HTML fragment intended to be placed in the final assistant message.",
+      inputSchema: finalHtmlInputSchema
     },
     {
-      name: "render_inline_section",
+      name: "render_inline_html",
       description:
-        "Render one structured section into an HTML fragment for incremental Cherry Studio chat rendering. Paste the returned HTML directly into the reply without Markdown code fences.",
-      inputSchema: inlineSectionInputSchema
+        "Render structured page data into a single HTML fragment for Cherry Studio chat messages. Use when the full page content is ready and should appear as one continuous rendered block.",
+      inputSchema: pageInputSchema
     },
+    ...(enableInlineSectionTool
+      ? [
+          {
+            name: "render_inline_section",
+            description:
+              "Render one structured section into an HTML fragment for incremental Cherry Studio chat rendering. Disabled by default; enable only for explicit section-by-section workflows.",
+            inputSchema: inlineSectionInputSchema
+          }
+        ]
+      : []),
     {
       name: "render_html",
       description: "Render structured page data into a formatted HTML string.",
@@ -518,7 +554,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return textContent(html);
       }
 
+      case "render_final_html": {
+        const { page } = renderFinalHtmlSchema.parse(args);
+        const html = await renderInlineHtmlFragment(page);
+
+        return textContent(html);
+      }
+
       case "render_inline_section": {
+        if (!enableInlineSectionTool) {
+          throw new Error(
+            "render_inline_section is disabled because this server is configured for final one-shot rendering. Finish all content first, then call render_final_html once with the complete page."
+          );
+        }
+
         const { section, theme } = renderInlineSectionSchema.parse(args);
         const html = await renderInlineSectionFragment(section, theme);
 
@@ -638,7 +687,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           templates: availableTemplates,
           themes: availableThemes,
           sections: ["hero", "features", "content", "steps", "faq"],
-          inlineTools: ["render_inline_html", "render_inline_section"],
+          inlineTools: enableInlineSectionTool
+            ? ["render_final_html", "render_inline_html", "render_inline_section"]
+            : ["render_final_html", "render_inline_html"],
+          recommendedInlineTool: "render_final_html",
+          inlineRenderingGuidance:
+            "For concentrated Cherry Studio rendering, finish all searching and drafting first, then call render_final_html once with the complete page. render_inline_section is not exposed unless HTML_RENDER_MCP_ENABLE_INLINE_SECTION=1 is set.",
           liveTools: [
             "start_live_render",
             "update_live_render",
