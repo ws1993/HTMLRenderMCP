@@ -101,7 +101,9 @@ export function baseCss(theme: HtmlTheme): string {
 
     * {
       box-sizing: border-box;
+      text-align: left !important;
       text-indent: 0 !important;
+      white-space: normal !important;
     }
 
     body {
@@ -219,6 +221,32 @@ export function baseCss(theme: HtmlTheme): string {
     .section p {
       margin: 0;
       text-indent: 0;
+    }
+
+    .rich-text-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .rich-text-group p {
+      margin: 0;
+    }
+
+    .rich-text-group-muted {
+      color: var(--muted);
+    }
+
+    .rich-text-panel {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface-raised);
+      line-height: 1.7;
+    }
+
+    .rich-text-single-block {
+      margin: 0;
     }
 
     .muted {

@@ -2,7 +2,7 @@ import type { HtmlPageInput, HtmlSectionInput, HtmlTheme } from "../schemas/html
 import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
 import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
-import { renderInlineRichText } from "../utils/renderInlineRichText.js";
+import { renderInlineRichTextParagraphs } from "../utils/renderInlineRichText.js";
 
 interface InlineThemeTokens {
   bg: string;
@@ -78,7 +78,12 @@ function getInlineTheme(theme: HtmlTheme): InlineThemeTokens {
 }
 
 function style(rules: Record<string, string | number | undefined>): string {
-  return Object.entries({ ...rules, "text-indent": "0 !important" })
+  return Object.entries({
+    ...rules,
+    "text-align": "left !important",
+    "text-indent": "0 !important",
+    "white-space": "normal !important"
+  })
     .filter(([, value]) => value !== undefined && value !== "")
     .map(([property, value]) => `${property}: ${value}`)
     .join("; ");
@@ -107,6 +112,40 @@ function renderInlineCta(
       "font-weight": 500
     })
   )}">${escapeHtml(cta.label)}</a>`;
+}
+
+function renderInlineParagraphGroup(
+  value: unknown,
+  options: {
+    singleTag?: "p" | "div";
+    singleStyle?: string;
+    multiWrapperStyle?: string;
+    multiParagraphStyle?: string;
+  } = {}
+): string {
+  const paragraphs = renderInlineRichTextParagraphs(value);
+
+  if (paragraphs.length === 0) {
+    return "";
+  }
+
+  if (paragraphs.length === 1) {
+    const tag = options.singleTag ?? "p";
+    const styleAttribute = options.singleStyle ? ` style="${escapeAttribute(options.singleStyle)}"` : "";
+
+    return `<${tag}${styleAttribute}>${paragraphs[0]}</${tag}>`;
+  }
+
+  const wrapperStyleAttribute = options.multiWrapperStyle
+    ? ` style="${escapeAttribute(options.multiWrapperStyle)}"`
+    : "";
+  const paragraphStyleAttribute = options.multiParagraphStyle
+    ? ` style="${escapeAttribute(options.multiParagraphStyle)}"`
+    : "";
+
+  return `<div${wrapperStyleAttribute}>${paragraphs
+    .map((paragraph) => `<p${paragraphStyleAttribute}>${paragraph}</p>`)
+    .join("")}</div>`;
 }
 
 function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens, isFirst: boolean): string {
@@ -139,7 +178,13 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
             <span style="${escapeAttribute(style({ "font-size": "12px", "font-weight": 600, color: theme.muted, "text-transform": "uppercase", "letter-spacing": "0.05em" }))}">HTML Render</span>
           </div>
           <h1 style="${escapeAttribute(style({ margin: "0 0 8px 0", "font-size": "24px", "font-weight": 700, color: theme.text, "line-height": 1.3, "letter-spacing": "-0.02em" }))}">${escapeHtml(section.heading)}</h1>
-          ${section.subheading ? `<p style="${escapeAttribute(style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 }))}">${renderInlineRichText(section.subheading)}</p>` : ""}
+          ${section.subheading
+            ? renderInlineParagraphGroup(section.subheading, {
+                singleStyle: style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 }),
+                multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "12px", color: theme.muted }),
+                multiParagraphStyle: style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 })
+              })
+            : ""}
           ${renderInlineCta(section.cta, theme)}
         </div>
       `;
@@ -149,7 +194,13 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
         <div style="${escapeAttribute(sectionWrapperStyle)}">
           <div style="${escapeAttribute(style({ "margin-bottom": "16px" }))}">
             <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
-            ${section.intro ? `<p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted }))}">${renderInlineRichText(section.intro)}</p>` : ""}
+            ${section.intro
+              ? renderInlineParagraphGroup(section.intro, {
+                  singleStyle: style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted }),
+                  multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "8px", "margin-top": "4px", color: theme.muted }),
+                  multiParagraphStyle: style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5 })
+                })
+              : ""}
           </div>
           <div style="${escapeAttribute(style({ display: "grid", "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }))}">
             ${section.items.map((item, index) => `
@@ -158,7 +209,11 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                   <span style="${escapeAttribute(style({ display: "flex", "align-items": "center", "justify-content": "center", width: "24px", height: "24px", background: theme.badgeBg, color: theme.badgeText, "border-radius": "6px", "font-size": "12px", "font-weight": 600 }))}">${index + 1}</span>
                   <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text }))}">${escapeHtml(item.title)}</h3>
                 </div>
-                <p style="${escapeAttribute(style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5, "text-indent": 0 }))}">${renderInlineRichText(item.body)}</p>
+                ${renderInlineParagraphGroup(item.body, {
+                  singleStyle: style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5, "text-indent": 0 }),
+                  multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "10px", color: theme.muted }),
+                  multiParagraphStyle: style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5, "text-indent": 0 })
+                })}
               </div>
             `).join("")}
           </div>
@@ -169,9 +224,12 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
       return `
         <div style="${escapeAttribute(sectionWrapperStyle)}">
           <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
-          <div style="${escapeAttribute(style({ "font-size": "14.5px", color: theme.text, "line-height": 1.7, background: theme.bg, padding: "16px", "border-radius": "10px", border: `1px solid ${theme.borderSubtle}` }))}">
-            ${renderInlineRichText(section.body)}
-          </div>
+          ${renderInlineParagraphGroup(section.body, {
+            singleTag: "div",
+            singleStyle: style({ margin: 0, "font-size": "14.5px", color: theme.text, "line-height": 1.7, background: theme.bg, padding: "16px", "border-radius": "10px", border: `1px solid ${theme.borderSubtle}` }),
+            multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "12px", "font-size": "14.5px", color: theme.text, "line-height": 1.7, background: theme.bg, padding: "16px", "border-radius": "10px", border: `1px solid ${theme.borderSubtle}` }),
+            multiParagraphStyle: style({ margin: 0, "font-size": "14.5px", color: theme.text, "line-height": 1.7 })
+          })}
         </div>
       `;
 
@@ -188,7 +246,11 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                 </div>
                 <div style="${escapeAttribute(style({ "padding-bottom": index < section.items.length - 1 ? "16px" : "0", "padding-top": "2px" }))}">
                   <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text, "line-height": 1.4 }))}">${escapeHtml(item.title)}</h3>
-                  <p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${renderInlineRichText(item.body)}</p>
+                  ${renderInlineParagraphGroup(item.body, {
+                    singleStyle: style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted, "line-height": 1.5 }),
+                    multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "8px", "margin-top": "4px", color: theme.muted }),
+                    multiParagraphStyle: style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5 })
+                  })}
                 </div>
               </div>
             `).join("")}
@@ -206,9 +268,12 @@ function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens
                 <summary style="${escapeAttribute(style({ "font-size": "15px", "font-weight": 500, color: theme.text, cursor: "pointer", outline: "none", "line-height": 1.4 }))}">
                   ${escapeHtml(item.question)}
                 </summary>
-                <div style="${escapeAttribute(style({ "margin-top": "12px", "padding-top": "12px", "border-top": `1px dashed ${theme.border}`, "font-size": "14px", color: theme.muted, "line-height": 1.6 }))}">
-                  ${renderInlineRichText(item.answer)}
-                </div>
+                ${renderInlineParagraphGroup(item.answer, {
+                  singleTag: "div",
+                  singleStyle: style({ "margin-top": "12px", "padding-top": "12px", "border-top": `1px dashed ${theme.border}`, "font-size": "14px", color: theme.muted, "line-height": 1.6 }),
+                  multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "10px", "margin-top": "12px", "padding-top": "12px", "border-top": `1px dashed ${theme.border}`, "font-size": "14px", color: theme.muted, "line-height": 1.6 }),
+                  multiParagraphStyle: style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.6 })
+                })}
               </details>
             `).join("")}
           </div>
@@ -264,7 +329,13 @@ function renderInlineFooter(footer: HtmlPageInput["footer"], theme: InlineThemeT
         color: theme.muted
       })
     )}">
-      ${footer.text ? `<p style="${escapeAttribute(style({ margin: 0 }))}">${renderInlineRichText(footer.text)}</p>` : ""}
+      ${footer.text
+        ? renderInlineParagraphGroup(footer.text, {
+            singleStyle: style({ margin: 0 }),
+            multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "8px" }),
+            multiParagraphStyle: style({ margin: 0 })
+          })
+        : ""}
       ${links}
     </div>
   `;

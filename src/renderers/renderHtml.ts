@@ -2,7 +2,7 @@ import type { HtmlPageInput } from "../schemas/htmlPageSchema.js";
 import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
 import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
-import { renderInlineRichText } from "../utils/renderInlineRichText.js";
+import { renderInlineRichTextParagraphs } from "../utils/renderInlineRichText.js";
 import { baseCss } from "./templates.js";
 
 function renderCta(cta: { label: string; href?: string } | undefined): string {
@@ -15,13 +15,47 @@ function renderCta(cta: { label: string; href?: string } | undefined): string {
   return `<a class="button" href="${escapeAttribute(href)}">${escapeHtml(cta.label)}</a>`;
 }
 
+function renderParagraphGroup(
+  value: unknown,
+  options: {
+    singleTag?: "p" | "div";
+    singleClassName?: string;
+    multiWrapperClassName?: string;
+    multiParagraphClassName?: string;
+  } = {}
+): string {
+  const paragraphs = renderInlineRichTextParagraphs(value);
+
+  if (paragraphs.length === 0) {
+    return "";
+  }
+
+  if (paragraphs.length === 1) {
+    const tag = options.singleTag ?? "p";
+    const classAttribute = options.singleClassName ? ` class="${escapeAttribute(options.singleClassName)}"` : "";
+
+    return `<${tag}${classAttribute}>${paragraphs[0]}</${tag}>`;
+  }
+
+  const wrapperClassAttribute = options.multiWrapperClassName
+    ? ` class="${escapeAttribute(options.multiWrapperClassName)}"`
+    : "";
+  const paragraphClassAttribute = options.multiParagraphClassName
+    ? ` class="${escapeAttribute(options.multiParagraphClassName)}"`
+    : "";
+
+  return `<div${wrapperClassAttribute}>${paragraphs
+    .map((paragraph) => `<p${paragraphClassAttribute}>${paragraph}</p>`)
+    .join("")}</div>`;
+}
+
 function renderSection(section: HtmlPageInput["sections"][number]): string {
   switch (section.type) {
     case "hero":
       return `
         <header class="section hero">
           <h1>${escapeHtml(section.heading)}</h1>
-          ${section.subheading ? `<p>${renderInlineRichText(section.subheading)}</p>` : ""}
+          ${section.subheading ? renderParagraphGroup(section.subheading) : ""}
           ${renderCta(section.cta)}
         </header>
       `;
@@ -30,14 +64,22 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
       return `
         <section class="section">
           <h2>${escapeHtml(section.heading)}</h2>
-          ${section.intro ? `<p class="muted">${renderInlineRichText(section.intro)}</p>` : ""}
+          ${section.intro
+            ? renderParagraphGroup(section.intro, {
+                singleClassName: "muted",
+                multiWrapperClassName: "rich-text-group rich-text-group-muted",
+                multiParagraphClassName: "muted"
+              })
+            : ""}
           <div class="grid">
             ${section.items
               .map(
                 (item) => `
                   <article class="card">
                     <h3>${escapeHtml(item.title)}</h3>
-                    <p>${renderInlineRichText(item.body)}</p>
+                    ${renderParagraphGroup(item.body, {
+                      multiWrapperClassName: "rich-text-group"
+                    })}
                   </article>
                 `
               )
@@ -50,7 +92,11 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
       return `
         <section class="section">
           <h2>${escapeHtml(section.heading)}</h2>
-          <p>${renderInlineRichText(section.body)}</p>
+          ${renderParagraphGroup(section.body, {
+            singleTag: "div",
+            multiWrapperClassName: "rich-text-group rich-text-panel",
+            singleClassName: "rich-text-panel rich-text-single-block"
+          })}
         </section>
       `;
 
@@ -64,7 +110,11 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
                 (item) => `
                   <article class="step">
                     <h3>${escapeHtml(item.title)}</h3>
-                    <p class="muted">${renderInlineRichText(item.body)}</p>
+                    ${renderParagraphGroup(item.body, {
+                      singleClassName: "muted",
+                      multiWrapperClassName: "rich-text-group rich-text-group-muted",
+                      multiParagraphClassName: "muted"
+                    })}
                   </article>
                 `
               )
@@ -82,7 +132,11 @@ function renderSection(section: HtmlPageInput["sections"][number]): string {
               (item) => `
                 <article class="faq-item">
                   <h3>${escapeHtml(item.question)}</h3>
-                  <p class="muted">${renderInlineRichText(item.answer)}</p>
+                  ${renderParagraphGroup(item.answer, {
+                    singleClassName: "muted",
+                    multiWrapperClassName: "rich-text-group rich-text-group-muted",
+                    multiParagraphClassName: "muted"
+                  })}
                 </article>
               `
             )
@@ -115,7 +169,11 @@ function renderFooter(footer: HtmlPageInput["footer"]): string {
 
   return `
     <footer>
-      ${footer.text ? `<p>${renderInlineRichText(footer.text)}</p>` : ""}
+      ${footer.text
+        ? renderParagraphGroup(footer.text, {
+            multiWrapperClassName: "rich-text-group"
+          })
+        : ""}
       ${links}
     </footer>
   `;
