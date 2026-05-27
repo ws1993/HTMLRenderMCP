@@ -8,56 +8,66 @@ interface InlineThemeTokens {
   text: string;
   muted: string;
   primary: string;
-  primaryDark: string;
+  primarySoft: string;
   border: string;
-  soft: string;
+  borderSubtle: string;
   shadow: string;
+  badgeBg: string;
+  badgeText: string;
 }
 
 const themes: Record<HtmlTheme, InlineThemeTokens> = {
   "modern-blue": {
-    bg: "#f6f7fb",
+    bg: "#f8fafc",
     surface: "#ffffff",
-    text: "#1f2937",
-    muted: "#6b7280",
+    text: "#0f172a",
+    muted: "#64748b",
     primary: "#2563eb",
-    primaryDark: "#1d4ed8",
-    border: "#e5e7eb",
-    soft: "#eff6ff",
-    shadow: "0 16px 36px rgba(15, 23, 42, 0.08)"
+    primarySoft: "#eff6ff",
+    border: "#cbd5e1",
+    borderSubtle: "#e2e8f0",
+    shadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)",
+    badgeBg: "#e0f2fe",
+    badgeText: "#0369a1"
   },
   "minimal-gray": {
-    bg: "#f9fafb",
+    bg: "#fafafa",
     surface: "#ffffff",
-    text: "#111827",
-    muted: "#6b7280",
-    primary: "#374151",
-    primaryDark: "#111827",
-    border: "#e5e7eb",
-    soft: "#f3f4f6",
-    shadow: "0 14px 30px rgba(17, 24, 39, 0.06)"
-  },
-  "warm-orange": {
-    bg: "#fff7ed",
-    surface: "#ffffff",
-    text: "#292524",
-    muted: "#78716c",
-    primary: "#ea580c",
-    primaryDark: "#c2410c",
-    border: "#fed7aa",
-    soft: "#ffedd5",
-    shadow: "0 16px 36px rgba(154, 52, 18, 0.12)"
+    text: "#18181b",
+    muted: "#71717a",
+    primary: "#18181b",
+    primarySoft: "#f4f4f5",
+    border: "#d4d4d8",
+    borderSubtle: "#e4e4e7",
+    shadow: "0 4px 6px -1px rgba(0, 0, 0, 0.03)",
+    badgeBg: "#f4f4f5",
+    badgeText: "#27272a"
   },
   "dark-tech": {
-    bg: "#020617",
-    surface: "#0f172a",
-    text: "#e5e7eb",
-    muted: "#94a3b8",
-    primary: "#38bdf8",
-    primaryDark: "#0284c7",
-    border: "#1e293b",
-    soft: "#082f49",
-    shadow: "0 16px 36px rgba(0, 0, 0, 0.35)"
+    bg: "#09090b",
+    surface: "#18181b",
+    text: "#fafafa",
+    muted: "#a1a1aa",
+    primary: "#3b82f6",
+    primarySoft: "rgba(59, 130, 246, 0.15)",
+    border: "#3f3f46",
+    borderSubtle: "#27272a",
+    shadow: "0 8px 16px rgba(0, 0, 0, 0.4)",
+    badgeBg: "rgba(255, 255, 255, 0.1)",
+    badgeText: "#e4e4e7"
+  },
+  "warm-orange": {
+    bg: "#fffbeb",
+    surface: "#ffffff",
+    text: "#451a03",
+    muted: "#78350f",
+    primary: "#d97706",
+    primarySoft: "#fef3c7",
+    border: "#fcd34d",
+    borderSubtle: "#fde68a",
+    shadow: "0 4px 6px -1px rgba(217, 119, 6, 0.05)",
+    badgeBg: "#ffedd5",
+    badgeText: "#c2410c"
   }
 };
 
@@ -72,138 +82,114 @@ function style(rules: Record<string, string | number | undefined>): string {
     .join("; ");
 }
 
-function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens): string {
-  const sectionStyleRules = {
-    margin: "16px 0",
+function renderInlineSection(section: HtmlSectionInput, theme: InlineThemeTokens, isFirst: boolean): string {
+  const sectionWrapperStyle = style({
     padding: "24px",
     background: theme.surface,
+    "border-top": isFirst ? "none" : `1px solid ${theme.borderSubtle}`
+  });
+
+  const sectionHeaderStyle = style({
+    margin: "0 0 16px 0",
+    "font-size": "17px",
+    "font-weight": 600,
     color: theme.text,
-    border: `1px solid ${theme.border}`,
-    "border-radius": "20px",
-    "box-shadow": theme.shadow,
-    "font-family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    "line-height": "1.65"
-  } satisfies Record<string, string | number | undefined>;
-  const sectionStyle = style(sectionStyleRules);
-  const h2Style = style({ margin: "0 0 12px", "font-size": "1.5rem", "line-height": "1.25" });
-  const h3Style = style({ margin: "0 0 8px", "font-size": "1.05rem", "line-height": "1.35" });
-  const mutedStyle = style({ margin: 0, color: theme.muted });
+    "letter-spacing": "-0.01em"
+  });
 
   switch (section.type) {
     case "hero":
       return `
-        <header style="${escapeAttribute(
+        <div style="${escapeAttribute(
           style({
-            ...sectionStyleRules,
-            padding: "36px 28px",
-            "text-align": "center",
-            background: `linear-gradient(135deg, ${theme.soft}, ${theme.surface})`
+            padding: "24px",
+            background: theme.surface,
+            "border-top": isFirst ? "none" : `1px solid ${theme.borderSubtle}`
           })
         )}">
-          <h1 style="${escapeAttribute(
-            style({ margin: 0, "font-size": "clamp(1.8rem, 4vw, 3rem)", "line-height": "1.1" })
-          )}">${escapeHtml(section.heading)}</h1>
-          ${
-            section.subheading
-              ? `<p style="${escapeAttribute(
-                  style({ margin: "16px auto 0", "max-width": "680px", color: theme.muted })
-                )}">${escapeHtml(section.subheading)}</p>`
-              : ""
-          }
+          <div style="${escapeAttribute(style({ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "12px" }))}">
+            <span style="${escapeAttribute(style({ background: theme.primary, "border-radius": "4px", width: "12px", height: "12px", display: "inline-block" }))}"></span>
+            <span style="${escapeAttribute(style({ "font-size": "12px", "font-weight": 600, color: theme.muted, "text-transform": "uppercase", "letter-spacing": "0.05em" }))}">HTML Render</span>
+          </div>
+          <h1 style="${escapeAttribute(style({ margin: "0 0 8px 0", "font-size": "24px", "font-weight": 700, color: theme.text, "line-height": 1.3, "letter-spacing": "-0.02em" }))}">${escapeHtml(section.heading)}</h1>
+          ${section.subheading ? `<p style="${escapeAttribute(style({ margin: 0, "font-size": "15px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(section.subheading)}</p>` : ""}
           ${
             section.cta
-              ? `<a href="${escapeAttribute(section.cta.href)}" style="${escapeAttribute(
-                  style({
-                    display: "inline-block",
-                    margin: "22px 0 0",
-                    padding: "10px 18px",
-                    background: theme.primary,
-                    color: "#ffffff",
-                    "border-radius": "999px",
-                    "font-weight": 700,
-                    "text-decoration": "none"
-                  })
-                )}">${escapeHtml(section.cta.label)}</a>`
+              ? `<a href="${escapeAttribute(section.cta.href)}" style="${escapeAttribute(style({ display: "inline-block", "margin-top": "16px", padding: "8px 16px", background: theme.primary, color: "#ffffff", "text-decoration": "none", "border-radius": "6px", "font-size": "14px", "font-weight": 500 }))}">${escapeHtml(section.cta.label)}</a>`
               : ""
           }
-        </header>
+        </div>
       `;
 
     case "features":
       return `
-        <section style="${escapeAttribute(sectionStyle)}">
-          <h2 style="${escapeAttribute(h2Style)}">${escapeHtml(section.heading)}</h2>
-          ${section.intro ? `<p style="${escapeAttribute(mutedStyle)}">${escapeHtml(section.intro)}</p>` : ""}
-          <div style="${escapeAttribute(
-            style({ display: "grid", "grid-template-columns": "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", margin: "18px 0 0" })
-          )}">
-            ${section.items
-              .map(
-                (item) => `
-                  <article style="${escapeAttribute(
-                    style({ padding: "16px", border: `1px solid ${theme.border}`, "border-radius": "16px", background: theme.soft })
-                  )}">
-                    <h3 style="${escapeAttribute(h3Style)}">${escapeHtml(item.title)}</h3>
-                    <p style="${escapeAttribute(mutedStyle)}">${escapeHtml(item.body)}</p>
-                  </article>
-                `
-              )
-              .join("")}
+        <div style="${escapeAttribute(sectionWrapperStyle)}">
+          <div style="${escapeAttribute(style({ "margin-bottom": "16px" }))}">
+            <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
+            ${section.intro ? `<p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted }))}">${escapeHtml(section.intro)}</p>` : ""}
           </div>
-        </section>
+          <div style="${escapeAttribute(style({ display: "grid", "grid-template-columns": "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px" }))}">
+            ${section.items.map((item, index) => `
+              <div style="${escapeAttribute(style({ padding: "16px", border: `1px solid ${theme.borderSubtle}`, "border-radius": "10px", background: theme.bg }))}">
+                <div style="${escapeAttribute(style({ display: "flex", "align-items": "center", gap: "8px", "margin-bottom": "8px" }))}">
+                  <span style="${escapeAttribute(style({ display: "flex", "align-items": "center", "justify-content": "center", width: "24px", height: "24px", background: theme.badgeBg, color: theme.badgeText, "border-radius": "6px", "font-size": "12px", "font-weight": 600 }))}">${index + 1}</span>
+                  <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text }))}">${escapeHtml(item.title)}</h3>
+                </div>
+                <p style="${escapeAttribute(style({ margin: 0, "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(item.body)}</p>
+              </div>
+            `).join("")}
+          </div>
+        </div>
       `;
 
     case "content":
       return `
-        <section style="${escapeAttribute(sectionStyle)}">
-          <h2 style="${escapeAttribute(h2Style)}">${escapeHtml(section.heading)}</h2>
-          <p style="${escapeAttribute(style({ margin: 0 }))}">${escapeHtml(section.body)}</p>
-        </section>
+        <div style="${escapeAttribute(sectionWrapperStyle)}">
+          <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
+          <div style="${escapeAttribute(style({ "font-size": "14.5px", color: theme.text, "line-height": 1.7, background: theme.bg, padding: "16px", "border-radius": "10px", border: `1px solid ${theme.borderSubtle}` }))}">
+            ${escapeHtml(section.body).replace(/\\n/g, '<br>')}
+          </div>
+        </div>
       `;
 
     case "steps":
       return `
-        <section style="${escapeAttribute(sectionStyle)}">
-          <h2 style="${escapeAttribute(h2Style)}">${escapeHtml(section.heading)}</h2>
-          <div style="${escapeAttribute(style({ display: "grid", gap: "12px", margin: "18px 0 0" }))}">
-            ${section.items
-              .map(
-                (item, index) => `
-                  <article style="${escapeAttribute(
-                    style({ display: "grid", "grid-template-columns": "36px 1fr", gap: "12px", padding: "16px", border: `1px solid ${theme.border}`, "border-radius": "16px", background: theme.surface })
-                  )}">
-                    <div style="${escapeAttribute(
-                      style({ width: "32px", height: "32px", "border-radius": "999px", background: theme.primary, color: "#ffffff", display: "grid", "place-items": "center", "font-weight": 700 })
-                    )}">${index + 1}</div>
-                    <div>
-                      <h3 style="${escapeAttribute(h3Style)}">${escapeHtml(item.title)}</h3>
-                      <p style="${escapeAttribute(mutedStyle)}">${escapeHtml(item.body)}</p>
-                    </div>
-                  </article>
-                `
-              )
-              .join("")}
+        <div style="${escapeAttribute(sectionWrapperStyle)}">
+          <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
+          <div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column" }))}">
+            ${section.items.map((item, index) => `
+              <div style="${escapeAttribute(style({ display: "flex", gap: "16px" }))}">
+                <div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column", "align-items": "center" }))}">
+                  <div style="${escapeAttribute(style({ width: "28px", height: "28px", "border-radius": "14px", background: theme.primarySoft, color: theme.primary, display: "flex", "align-items": "center", "justify-content": "center", "font-size": "13px", "font-weight": 600, border: `1px solid ${theme.borderSubtle}`, "flex-shrink": 0 }))}">${index + 1}</div>
+                  ${index < section.items.length - 1 ? `<div style="${escapeAttribute(style({ width: "2px", height: "100%", background: theme.borderSubtle, "margin-top": "4px", "margin-bottom": "4px", "min-height": "16px" }))}"></div>` : ""}
+                </div>
+                <div style="${escapeAttribute(style({ "padding-bottom": index < section.items.length - 1 ? "16px" : "0", "padding-top": "2px" }))}">
+                  <h3 style="${escapeAttribute(style({ margin: 0, "font-size": "15px", "font-weight": 600, color: theme.text, "line-height": 1.4 }))}">${escapeHtml(item.title)}</h3>
+                  <p style="${escapeAttribute(style({ margin: "4px 0 0", "font-size": "14px", color: theme.muted, "line-height": 1.5 }))}">${escapeHtml(item.body)}</p>
+                </div>
+              </div>
+            `).join("")}
           </div>
-        </section>
+        </div>
       `;
 
     case "faq":
       return `
-        <section style="${escapeAttribute(sectionStyle)}">
-          <h2 style="${escapeAttribute(h2Style)}">${escapeHtml(section.heading)}</h2>
-          ${section.items
-            .map(
-              (item) => `
-                <article style="${escapeAttribute(
-                  style({ padding: "14px 0", "border-top": `1px solid ${theme.border}` })
-                )}">
-                  <h3 style="${escapeAttribute(h3Style)}">${escapeHtml(item.question)}</h3>
-                  <p style="${escapeAttribute(mutedStyle)}">${escapeHtml(item.answer)}</p>
-                </article>
-              `
-            )
-            .join("")}
-        </section>
+        <div style="${escapeAttribute(sectionWrapperStyle)}">
+          <h2 style="${escapeAttribute(sectionHeaderStyle)}">${escapeHtml(section.heading)}</h2>
+          <div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column", gap: "8px" }))}">
+            ${section.items.map(item => `
+              <details style="${escapeAttribute(style({ background: theme.bg, border: `1px solid ${theme.borderSubtle}`, "border-radius": "8px", padding: "12px 16px" }))}">
+                <summary style="${escapeAttribute(style({ "font-size": "15px", "font-weight": 500, color: theme.text, cursor: "pointer", outline: "none", "line-height": 1.4 }))}">
+                  ${escapeHtml(item.question)}
+                </summary>
+                <div style="${escapeAttribute(style({ "margin-top": "12px", "padding-top": "12px", "border-top": `1px dashed ${theme.border}`, "font-size": "14px", color: theme.muted, "line-height": 1.6 }))}">
+                  ${escapeHtml(item.answer)}
+                </div>
+              </details>
+            `).join("")}
+          </div>
+        </div>
       `;
   }
 }
@@ -214,23 +200,45 @@ function renderInlineFooter(footer: HtmlPageInput["footer"], theme: InlineThemeT
   }
 
   const links = footer.links?.length
-    ? `<div style="${escapeAttribute(style({ display: "flex", "flex-wrap": "wrap", gap: "10px", "justify-content": "center", margin: "10px 0 0" }))}">
+    ? `<div style="${escapeAttribute(
+        style({
+          display: "flex",
+          "flex-wrap": "wrap",
+          gap: "12px",
+          "justify-content": "center",
+          "margin-top": "10px"
+        })
+      )}">
         ${footer.links
           .map(
             (link) =>
-              `<a href="${escapeAttribute(link.href)}" style="${escapeAttribute(style({ color: theme.primaryDark, "font-weight": 600, "text-decoration": "none" }))}">${escapeHtml(link.label)}</a>`
+              `<a href="${escapeAttribute(link.href)}" style="${escapeAttribute(
+                style({
+                  color: theme.primary,
+                  "font-weight": 500,
+                  "font-size": "13px",
+                  "text-decoration": "none"
+                })
+              )}">${escapeHtml(link.label)}</a>`
           )
           .join("")}
       </div>`
     : "";
 
   return `
-    <footer style="${escapeAttribute(
-      style({ margin: "22px 0 0", color: theme.muted, "text-align": "center", "font-size": "0.95rem" })
+    <div style="${escapeAttribute(
+      style({
+        padding: "16px 24px",
+        background: theme.bg,
+        "border-top": `1px solid ${theme.borderSubtle}`,
+        "text-align": "center",
+        "font-size": "13px",
+        color: theme.muted
+      })
     )}">
       ${footer.text ? `<p style="${escapeAttribute(style({ margin: 0 }))}">${escapeHtml(footer.text)}</p>` : ""}
       ${links}
-    </footer>
+    </div>
   `;
 }
 
@@ -239,16 +247,19 @@ export async function renderInlineHtmlFragment(input: HtmlPageInput): Promise<st
   const html = `
     <div data-html-render-mcp="inline" data-template="${escapeAttribute(input.template)}" style="${escapeAttribute(
       style({
-        margin: "12px 0",
-        padding: "16px",
-        background: theme.bg,
+        margin: "16px 0",
+        background: theme.surface,
         color: theme.text,
-        "border-radius": "24px",
-        "font-family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        "line-height": "1.65"
+        border: `1px solid ${theme.border}`,
+        "border-radius": "12px",
+        "box-shadow": theme.shadow,
+        "font-family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'",
+        "line-height": 1.6,
+        "max-width": "100%",
+        overflow: "hidden"
       })
     )}">
-      ${input.sections.map((section) => renderInlineSection(section, theme)).join("")}
+      ${input.sections.map((section, index) => renderInlineSection(section, theme, index === 0)).join("")}
       ${renderInlineFooter(input.footer, theme)}
     </div>
   `;
@@ -265,12 +276,17 @@ export async function renderInlineSectionFragment(
     <div data-html-render-mcp="inline-section" style="${escapeAttribute(
       style({
         margin: "12px 0",
+        background: theme.surface,
         color: theme.text,
-        "font-family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-        "line-height": "1.65"
+        border: `1px solid ${theme.border}`,
+        "border-radius": "12px",
+        "box-shadow": theme.shadow,
+        "font-family": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'",
+        "line-height": 1.6,
+        overflow: "hidden"
       })
     )}">
-      ${renderInlineSection(section, theme)}
+      ${renderInlineSection(section, theme, true)}
     </div>
   `;
 

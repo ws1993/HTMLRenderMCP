@@ -1,22 +1,12 @@
 # HTML Render MCP
 
-一个面向 Cherry Studio 的本地 MCP Server，用于把结构化 JSON 渲染成 **可直接显示在 Cherry Studio 对话消息里的 HTML 片段**，也可以按需导出为完整 HTML 文件。
+面向 Cherry Studio 的本地 MCP Server，用于把完整结构化页面一次性渲染成可直接显示在对话消息里的 HTML 片段。
 
-这里的“对话内渲染”指：模型先完成搜索、阅读和内容整理，最后再调用 MCP 生成一段连续 HTML 片段，然后把返回的 HTML **原样作为普通回复内容输出到 Cherry Studio 对话区**。Cherry Studio 本身支持 HTML 渲染，因此不需要另开浏览器预览页。
+当前版本只暴露一个核心工具：
 
-关键要求：最终回复正文只放 MCP 返回的 HTML，不要在 HTML 前、中、后穿插解释、计划、工具调用说明或 Markdown。模型输出 HTML 时不要用 Markdown 代码块包裹，不要转义 HTML，也不要只返回工具 JSON。否则 Cherry Studio 会把它当代码文本显示，或者把页面拆成多个不连续区域。
+- `render_final_html`：最终一次性 HTML 渲染。模型应先完成全部搜索、阅读、分析和内容整理，最后调用一次本工具生成完整连续的 HTML 页面片段。
 
-## 功能
-
-- `render_final_html`：最终一次性渲染工具。适合“搜索全部完成后，再集中输出完整 HTML 页面”的工作流，推荐优先使用。
-- `render_inline_html`：把完整结构化页面渲染为 Cherry Studio 对话内可直接显示的一段连续 HTML 片段，保留用于兼容已有提示词。
-- `render_inline_section`：默认不暴露、不可用，避免模型分段渲染。只有设置 `HTML_RENDER_MCP_ENABLE_INLINE_SECTION=1` 后才启用。
-- `render_html`：返回格式化后的 HTML 字符串。
-- `render_html_file`：生成 HTML 并写入当前工作目录内的 `.html` / `.htm` 文件。
-- `start_live_render` / `append_live_section` 等：可选的外部本地预览会话工具，不是 Cherry Studio 对话内渲染的主路径。
-- `export_live_render`：把实时会话导出为最终静态 HTML 文件。
-- `list_html_templates`：列出可用模板、主题和区块类型。
-- `validate_html_input`：只校验输入结构，不生成 HTML。
+这个项目不再默认暴露逐段渲染、外部预览、导出文件、校验等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。
 
 ## 安装与构建
 
@@ -67,25 +57,17 @@ npm run build
 - 参数：`E:/Project/AI/HTMLRenderMCP/dist/index.js`
 - 工作目录：`E:/Project/AI/HTMLRenderMCP`
 
-如果仍需要使用外部本地预览会话工具，可通过环境变量修改预览端口：
-
-```json
-{
-  "HTML_RENDER_MCP_PREVIEW_PORT": "3766"
-}
-```
-
-## 输入示例
-
-### Cherry Studio 对话内集中渲染示例
-
-推荐在 Cherry Studio 中这样要求模型：
+## 推荐提示词
 
 ```text
-请先完成全部搜索、阅读和内容整理，不要在搜索过程中调用 html-render-mcp。等内容完整后，使用 html-render-mcp 的 render_final_html 一次性生成完整 HTML 页面片段。最终回复正文输出工具返回的 HTML，不要使用 Markdown 代码块包裹 HTML，不要一段一段渲染。
+请先完成全部搜索、阅读、分析和内容整理，不要在搜索过程中调用 html-render-mcp。
+等内容完整后，调用 html-render-mcp 的 render_final_html 一次性生成完整 HTML 页面片段。
+最终回复输出工具返回的 HTML，不要使用 Markdown 代码块包裹 HTML，不要一段一段渲染。
 ```
 
-模型完成搜索和整理后，最后调用一次 `render_final_html`：
+## 工具输入
+
+调用 `render_final_html`：
 
 ```json
 {
@@ -98,7 +80,7 @@ npm run build
       {
         "type": "hero",
         "heading": "今日重要新闻",
-        "subheading": "2026年5月27日 - 综合国内外热点",
+        "subheading": "2026年5月27日 - 国内外重大事件一览",
         "cta": {
           "label": "阅读全文",
           "href": "#content"
@@ -110,234 +92,57 @@ npm run build
         "intro": "今日国内重要新闻摘要",
         "items": [
           {
-            "title": "山西煤矿重大瓦斯爆炸",
+            "title": "山西煤矿事故",
             "body": "事故救援与安全生产排查成为关注重点。"
           },
           {
-            "title": "中国海警行动维护主权",
+            "title": "海上执法行动",
             "body": "相关海域执法行动受到持续关注。"
           }
         ]
+      },
+      {
+        "type": "content",
+        "heading": "国际观察",
+        "body": "整理完整资料后，模型只需要把结构化结果交给 MCP 做最终渲染。"
       }
-    ]
-  }
-}
-```
-
-工具会返回一段连续的 `<div ...>...</div>` HTML。模型应把这段 HTML 作为回复正文的全部内容，例如：
-
-```text
-<div data-html-render-mcp="inline" style="...">
-  ...
-</div>
-```
-
-注意：上面只是文档展示。真实对话中不要加三反引号代码块，也不要输出“接下来我会渲染……”之类的普通文本。
-
-如果明确需要兼容旧提示词，也可以调用 `render_inline_html`，参数是不带 `page` 包裹的完整页面对象：
-
-```json
-{
-  "template": "article",
-  "title": "今日重要新闻",
-  "description": "2026年5月27日 - 综合国内外热点",
-  "theme": "modern-blue",
-  "sections": [
-    {
-      "type": "hero",
-      "heading": "今日重要新闻",
-      "subheading": "2026年5月27日 - 综合国内外热点"
-    }
-  ]
-}
-```
-
-默认模式不会暴露 `render_inline_section`，以避免模型在搜索或写作中途分段渲染。如果明确需要边生成边显示，可以在 MCP 环境变量中设置 `HTML_RENDER_MCP_ENABLE_INLINE_SECTION=1` 后重启服务，再调用 `render_inline_section`：
-
-```json
-{
-  "theme": "modern-blue",
-  "section": {
-    "type": "content",
-    "heading": "第一部分：实现方式",
-    "body": "MCP 负责把结构化内容渲染成安全、稳定、带内联样式的 HTML 片段。Cherry Studio 对话区负责直接渲染这些 HTML。"
-  }
-}
-```
-
-### 静态导出示例
-
-调用 `render_html_file`：
-
-```json
-{
-  "outputPath": "output/index.html",
-  "template": "landing-page",
-  "title": "产品介绍页",
-  "description": "一个现代化产品落地页",
-  "theme": "modern-blue",
-  "sections": [
-    {
-      "type": "hero",
-      "heading": "让 AI 工作流更稳定",
-      "subheading": "用 MCP 把输出格式从提示词中解放出来",
-      "cta": {
-        "label": "立即开始",
-        "href": "#start"
-      }
-    },
-    {
-      "type": "features",
-      "heading": "核心优势",
-      "intro": "结构、样式和安全边界都由 MCP 统一控制。",
-      "items": [
-        {
-          "title": "格式稳定",
-          "body": "HTML 结构由模板控制，不受模型风格影响。"
-        },
-        {
-          "title": "输入可校验",
-          "body": "所有页面数据都会先通过 Zod schema 校验。"
-        },
-        {
-          "title": "安全输出",
-          "body": "用户输入会进行 HTML 转义，并限制文件写入范围。"
-        }
-      ]
-    },
-    {
-      "type": "steps",
-      "heading": "使用步骤",
-      "items": [
-        {
-          "title": "整理内容",
-          "body": "让模型把需求拆成 hero、features、content、steps 或 faq。"
-        },
-        {
-          "title": "调用工具",
-          "body": "通过 render_html_file 传入结构化 JSON。"
-        },
-        {
-          "title": "获得页面",
-          "body": "MCP 在 output/index.html 生成稳定页面。"
-        }
-      ]
-    }
-  ],
-  "footer": {
-    "text": "Generated by HTML Render MCP"
-  }
-}
-```
-
-### 可选：外部本地预览示例
-
-以下工具会启动本地预览地址，适合调试或另存页面，不是 Cherry Studio 对话内 HTML 渲染的推荐路径。
-
-第一步，调用 `start_live_render` 启动实时会话：
-
-```json
-{
-  "sessionId": "default",
-  "template": "landing-page",
-  "title": "实时文档预览",
-  "description": "通过 MCP 分段更新的实时 HTML 页面",
-  "theme": "modern-blue"
-}
-```
-
-返回内容中会包含预览地址，例如：
-
-```text
-http://127.0.0.1:3766/preview/default
-```
-
-在浏览器中打开这个地址。之后模型每调用一次实时更新工具，页面会自动刷新。
-
-第二步，逐段追加内容，调用 `append_live_section`：
-
-```json
-{
-  "sessionId": "default",
-  "section": {
-    "type": "hero",
-    "heading": "实时 HTML 渲染",
-    "subheading": "不是最后转换，而是边生成边预览",
-    "cta": {
-      "label": "查看下方内容",
-      "href": "#content"
+    ],
+    "footer": {
+      "text": "Generated by HTML Render MCP"
     }
   }
 }
 ```
 
-继续追加正文区块：
+如果客户端只能传字符串，`page` 也可以是完整页面对象的 JSON 字符串，服务端会先解析再校验。
 
-```json
-{
-  "sessionId": "default",
-  "section": {
-    "type": "content",
-    "heading": "第一部分",
-    "body": "模型可以在生成过程中逐段调用 MCP 工具，MCP Server 维护页面状态并通知预览页刷新。"
-  }
-}
-```
+## 支持的结构
 
-如果需要修正某个区块，可调用 `replace_live_section`，其中 `index` 从 `0` 开始：
-
-```json
-{
-  "sessionId": "default",
-  "index": 1,
-  "section": {
-    "type": "content",
-    "heading": "第一部分：实时机制",
-    "body": "MCP Server 使用内存会话保存页面结构，并通过本地 SSE 预览服务触发浏览器刷新。"
-  }
-}
-```
-
-最后，如需生成静态文件，调用 `export_live_render`：
-
-```json
-{
-  "sessionId": "default",
-  "outputPath": "output/live.html"
-}
-```
-
-如果你明确需要外部预览，可以这样要求模型：
-
-```text
-请使用 html-render-mcp 的外部预览会话工具。先调用 start_live_render，返回预览地址后，按内容生成进度逐段调用 append_live_section。
-```
-
-## 支持的模板与主题
-
-当前模板：
+模板：
 
 - `landing-page`
 - `report`
 - `article`
 - `dashboard`
 
-当前这些模板使用同一套稳定渲染结构，后续可以在 `src/renderers/renderHtml.ts` 中按 `template` 分支扩展不同布局。
-
-当前主题：
+主题：
 
 - `modern-blue`
 - `minimal-gray`
 - `warm-orange`
 - `dark-tech`
 
-## 安全约束
+区块：
 
-- 所有文本内容都会进行 HTML 转义。
-- `render_final_html` 和 `render_inline_html` 输出的是片段级 HTML，不包含 `<!doctype>`、`<html>`、`<head>` 或 `<body>`，更适合 Cherry Studio 消息区直接渲染。
-- `render_inline_section` 默认禁用，避免分段渲染导致 HTML 页面被工具卡片、思考内容或普通文本打断。
-- 内联渲染使用行内样式，避免依赖 `<style>` 在聊天消息中是否生效。
-- `render_html_file` 只允许写入当前工作目录内的 `.html` / `.htm` 文件。
-- `export_live_render` 同样只允许写入当前工作目录内的 `.html` / `.htm` 文件。
-- 实时会话保存在 MCP Server 进程内存中，重启服务后会话会清空。
-- 默认忽略 `node_modules/`、`dist/`、`output/` 和 `.env*`。
+- `hero`
+- `features`
+- `content`
+- `steps`
+- `faq`
+
+## 输出约束
+
+- 输出是片段级 HTML，不包含 `<!doctype>`、`<html>`、`<head>` 或 `<body>`，适合 Cherry Studio 消息区直接渲染。
+- 样式全部使用行内样式，避免聊天消息环境屏蔽 `<style>`。
+- 所有用户文本都会 HTML 转义。
+- 工具只负责最终 HTML 渲染，不负责搜索、写文件或启动外部预览。
