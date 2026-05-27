@@ -6,8 +6,12 @@
   "bin": {
     "html-render-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit && node scripts/build.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "check": "tsc --noEmit",
@@ -20,15 +24,13 @@
     "cherry-studio"
   ],
   "license": "MIT",
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
-    "prettier": "latest",
-    "zod": "latest"
-  },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^25.9.1",
+    "esbuild": "^0.28.0",
     "tsx": "^4.22.3",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
   },
   "engines": {
     "node": ">=20"
