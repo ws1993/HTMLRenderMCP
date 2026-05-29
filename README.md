@@ -6,7 +6,7 @@
 
 - `render_final_html`：最终一次性 HTML 渲染。模型应先完成全部搜索、阅读、分析和内容整理，最后调用一次本工具生成完整连续的 HTML 页面片段。
 - `render_upgraded_html`：升级版最终一次性 HTML 渲染。它是完全独立的新工具，参考 `升级技术方案.md` 的“规则系统 + 设计令牌 + 内容类型策略 + 布局组件语法”方案，适合生成更结构化的研究、对比、教程、解读等页面。
-- `render_adaptive_theme_html`：自适应主题最终一次性 HTML 渲染。它复用升级版的布局组件，但会根据 `contentTypes` 自动匹配更具体的视觉画像，例如新闻类默认使用旧报纸风格、旧纸张配色和宋体/仿宋一类衬线字体。
+- `render_adaptive_theme_html`：自适应主题最终一次性 HTML 渲染。它从“按内容类型换皮”升级为主题感知的信息表达系统：会根据 `contentTypes` / `styleProfile` 自动选择更合适的信息结构，例如新闻倒金字塔、决策简报、学术证据、工作坊路径、观点论证或精选清单。优先使用 `expression` / `expressions` 描述语义，原有 `blocks` 仍保持兼容。
 
 这个项目不再默认暴露逐段渲染、外部预览、导出文件、校验等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。
 
@@ -83,7 +83,8 @@ npm run build
 ```text
 请先完成全部搜索、阅读、分析和内容整理，不要在搜索过程中调用 html-render-mcp。
 如果内容需要更强的主题定制化，请最后只调用一次 html-render-mcp 的 render_adaptive_theme_html。
-调用时按内容选择 contentTypes，并优先使用 styleProfile: "auto" 让 MCP 自动匹配视觉画像：news 会使用旧报纸风格，research 会使用学术期刊风格，tutorial 会使用教程工作坊风格等。
+调用时按内容选择 contentTypes，并优先使用 styleProfile: "auto" 让 MCP 自动匹配视觉画像和表达策略：news 倾向倒金字塔，compare 倾向结论先行的决策简报，research 倾向证据结构，tutorial 倾向工作坊步骤。
+优先用 expression / expressions 表达核心观点、摘要、证据、决策矩阵、流程或清单；只有需要兼容旧结构或补充具体布局时再使用 blocks。
 最终回复只输出工具返回的完整连续 HTML 片段，不要使用 Markdown 代码块包裹 HTML，不要一段一段渲染。
 ```
 
@@ -234,6 +235,34 @@ npm run build
     "description": "旧报纸风格新闻摘要",
     "contentTypes": ["news"],
     "styleProfile": "auto",
+    "expression": {
+      "strategy": "auto",
+      "emphasis": "core-viewpoint",
+      "density": "balanced",
+      "hierarchy": "strong",
+      "coreViewpoint": "先用一句话交代最重要事实，再展开背景、影响和后续观察点。",
+      "keyTakeaways": ["读者先看到发生了什么", "后续信息按重要性展开"]
+    },
+    "expressions": [
+      {
+        "type": "lead",
+        "eyebrow": "新闻速览",
+        "title": "今日重要新闻",
+        "body": "这是一个语义化新闻导语示例：自适应主题工具不再强制把所有内容塞进卡片，而是按新闻阅读习惯优先呈现最关键事实。",
+        "facts": [
+          { "label": "内容类型", "value": "news", "detail": "自动映射为 old-newspaper" },
+          { "label": "表达策略", "value": "inverted-pyramid", "detail": "重要信息优先" }
+        ]
+      },
+      {
+        "type": "key-takeaways",
+        "title": "读者先看什么",
+        "items": [
+          { "title": "先给结论", "body": "核心事实和影响前置，降低阅读成本。" },
+          { "title": "再给脉络", "body": "背景、时间线、来源等信息随后补充。" }
+        ]
+      }
+    ],
     "tokens": {
       "fontScale": "normal",
       "spacingScale": "normal",
@@ -243,9 +272,9 @@ npm run build
     "blocks": [
       {
         "type": "hero",
-        "eyebrow": "新闻速览",
-        "title": "今日重要新闻",
-        "subtitle": "自动匹配 news 内容类型，使用旧纸张背景、深墨色文字和宋体/仿宋一类衬线字体。",
+        "eyebrow": "兼容区块",
+        "title": "仍可继续使用 blocks",
+        "subtitle": "blocks 会在自适应画像下获得 profile-specific 渲染；没有合适覆写时会回退到升级版区块渲染。",
         "meta": ["news", "old-newspaper"]
       },
       {
@@ -352,6 +381,31 @@ npm run build
 - `editorial-column`：评论专栏风格，衬线字体、报刊专栏感、适合观点文章；默认匹配 `opinion`。
 
 `auto` 多内容类型优先级：`news` > `opinion` > `tutorial` > `compare` > `research` > `explain` > `list`。如需覆盖自动结果，可显式传入 `styleProfile`。
+
+自适应表达策略（`render_adaptive_theme_html.expression.strategy`）：
+
+- `auto`：推荐默认值，由内容类型、主题画像和 `emphasis` 自动决定。
+- `top-down`：总分结构，适合解释、综述、方案说明。
+- `inverted-pyramid`：倒金字塔，适合新闻和事件追踪。
+- `decision`：结论/建议优先，适合对比选型、决策建议、执行简报。
+- `academic`：论点、证据、限制和来源优先，适合研究和调研。
+- `workshop`：目标、前置条件、步骤、检查点优先，适合教程。
+- `argument`：主张、理由、反方观点、结论优先，适合观点文章。
+- `catalog`：筛选标准、排名、标签和适用场景优先，适合清单推荐。
+
+自适应语义表达（`render_adaptive_theme_html.expressions`）：
+
+- `lead`：导语/核心观点，可附关键事实条。
+- `key-takeaways`：要点速览。
+- `executive-summary`：结论先行的执行摘要/决策简报。
+- `evidence-map`：论点、证据、置信度和限制。
+- `decision-matrix`：标准、选项、评分和推荐。
+- `argument-map`：主张、理由、反方观点和结论。
+- `process-guide`：目标、前置条件、步骤、检查点和验收。
+- `ranked-list`：排名、标签、适配场景和说明。
+- `section-outline`：层级化大纲。
+
+`render_adaptive_theme_html` 至少需要提供一种内容来源：`expressions`、`blocks`，或者 `expression.coreViewpoint` / `expression.keyTakeaways`。其中 `expression` 可自动生成基础导语和要点；`blocks` 是兼容层，不再是唯一推荐结构。
 
 ## 输出约束
 

@@ -1,6 +1,6 @@
 {
   "name": "html-render-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "A local MCP server that renders structured page data into Cherry Studio HTML fragments and stable HTML files.",
   "type": "module",
   "bin": {

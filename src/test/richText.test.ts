@@ -113,6 +113,7 @@ const adaptiveNewsSamplePage: AdaptiveThemeHtmlPageInput = {
   lang: "zh-CN",
   contentTypes: ["news"],
   styleProfile: "auto",
+  expressions: [],
   blocks: [
     {
       type: "hero",
@@ -197,6 +198,8 @@ test("renderAdaptiveThemeInlineHtmlFragment maps news to old newspaper styling",
   assert.match(html, /data-html-render-mcp="adaptive-theme-inline"/);
   assert.match(html, /data-content-types="news"/);
   assert.match(html, /data-style-profile="old-newspaper"/);
+  assert.match(html, /data-expression-strategy="inverted-pyramid"/);
+  assert.match(html, /data-expression-types="block:hero,block:summary-card"/);
   assert.match(html, /Songti SC/);
   assert.match(html, /FangSong/);
   assert.match(html, /#fbf1d8/);
@@ -210,5 +213,59 @@ test("renderAdaptiveThemeInlineHtmlFragment allows explicit style profile overri
   });
 
   assert.match(html, /data-style-profile="academic-journal"/);
+  assert.match(html, /data-expression-strategy="academic"/);
   assert.doesNotMatch(html, /data-style-profile="old-newspaper"/);
+});
+
+test("renderAdaptiveThemeInlineHtmlFragment renders decision expressions without blocks", async () => {
+  const html = await renderAdaptiveThemeInlineHtmlFragment({
+    title: "选型建议",
+    lang: "zh-CN",
+    contentTypes: ["compare"],
+    styleProfile: "auto",
+    expressions: [
+      {
+        type: "executive-summary",
+        title: "结论先行",
+        ask: "是否继续维护模板库？",
+        recommendation: "优先维护规则系统，而不是继续扩展模板库。",
+        decisionHeadlines: ["维护成本更低", "跨模型输出更稳定"],
+        rationale: "模板爆炸会放大维护成本，同时继续安全转义 <script>alert(1)</script>。",
+        impact: "决策者可以先看到推荐，再按理由和影响展开。"
+      }
+    ],
+    blocks: []
+  });
+
+  assert.match(html, /data-style-profile="decision-brief"/);
+  assert.match(html, /data-expression-strategy="decision"/);
+  assert.match(html, /data-expression-types="executive-summary"/);
+  assert.match(html, /Recommendation first/);
+  assert.match(html, /优先维护规则系统/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});
+
+test("renderAdaptiveThemeInlineHtmlFragment derives semantic expressions from config", async () => {
+  const html = await renderAdaptiveThemeInlineHtmlFragment({
+    title: "工作坊计划",
+    lang: "zh-CN",
+    contentTypes: ["tutorial"],
+    styleProfile: "auto",
+    expression: {
+      strategy: "auto",
+      emphasis: "process",
+      density: "balanced",
+      hierarchy: "strong",
+      coreViewpoint: "先明确目标，再按步骤验证输出。",
+      keyTakeaways: ["准备素材和约束", "逐步执行并检查结果"]
+    },
+    expressions: [],
+    blocks: []
+  });
+
+  assert.match(html, /data-style-profile="workshop-guide"/);
+  assert.match(html, /data-expression-strategy="workshop"/);
+  assert.match(html, /data-expression-types="lead,key-takeaways"/);
+  assert.match(html, /先明确目标/);
+  assert.match(html, /Point 1/);
 });

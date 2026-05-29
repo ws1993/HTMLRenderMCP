@@ -1,13 +1,19 @@
 import type {
+  AdaptiveExpressionConfigInput,
+  AdaptiveExpressionInput,
+  AdaptiveExpressionStrategy,
   AdaptiveStyleProfile,
   AdaptiveThemeHtmlPageInput
 } from "../schemas/adaptiveThemeHtmlPageSchema.js";
 import type {
   UpgradedContentType,
-  UpgradedDesignTokensInput
+  UpgradedDesignTokensInput,
+  UpgradedHtmlBlockInput
 } from "../schemas/upgradedHtmlPageSchema.js";
-import { escapeAttribute } from "../utils/escapeHtml.js";
+import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
+import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
+import { renderInlineRichTextParagraphs } from "../utils/renderInlineRichText.js";
 import {
   renderBlock,
   renderFooter,
@@ -16,10 +22,30 @@ import {
 } from "./renderUpgradedInlineHtml.js";
 
 type ResolvedAdaptiveStyleProfile = Exclude<AdaptiveStyleProfile, "auto">;
+type ResolvedAdaptiveExpressionStrategy = Exclude<AdaptiveExpressionStrategy, "auto">;
 
 interface AdaptiveInlineThemeTokens extends UpgradedInlineThemeTokens {
   fontFamily: string;
   outerBackground: string;
+}
+
+interface AdaptiveProfileDefinition {
+  theme: AdaptiveInlineThemeTokens;
+  strategy: {
+    defaultStructure: ResolvedAdaptiveExpressionStrategy;
+    leadTreatment: string;
+    summaryTreatment: string;
+    sectionTreatment: string;
+    sourceTreatment: string;
+  };
+}
+
+interface AdaptiveRenderContext {
+  profile: ResolvedAdaptiveStyleProfile;
+  theme: AdaptiveInlineThemeTokens;
+  definition: AdaptiveProfileDefinition;
+  strategy: ResolvedAdaptiveExpressionStrategy;
+  expression: AdaptiveExpressionConfigInput;
 }
 
 const profileByContentType: Array<{
@@ -235,6 +261,79 @@ const profileThemes: Record<ResolvedAdaptiveStyleProfile, AdaptiveInlineThemeTok
   }
 };
 
+const profileDefinitions: Record<ResolvedAdaptiveStyleProfile, AdaptiveProfileDefinition> = {
+  "old-newspaper": {
+    theme: profileThemes["old-newspaper"],
+    strategy: {
+      defaultStructure: "inverted-pyramid",
+      leadTreatment: "headline-lead-facts",
+      summaryTreatment: "lead-and-factbox",
+      sectionTreatment: "newspaper-columns",
+      sourceTreatment: "footnotes"
+    }
+  },
+  "academic-journal": {
+    theme: profileThemes["academic-journal"],
+    strategy: {
+      defaultStructure: "academic",
+      leadTreatment: "paper-title-abstract",
+      summaryTreatment: "abstract-findings-limitations",
+      sectionTreatment: "numbered-paper-sections",
+      sourceTreatment: "bibliography"
+    }
+  },
+  "clean-magazine": {
+    theme: profileThemes["clean-magazine"],
+    strategy: {
+      defaultStructure: "top-down",
+      leadTreatment: "magazine-deck",
+      summaryTreatment: "insight-stack",
+      sectionTreatment: "layered-feature",
+      sourceTreatment: "further-reading"
+    }
+  },
+  "decision-brief": {
+    theme: profileThemes["decision-brief"],
+    strategy: {
+      defaultStructure: "decision",
+      leadTreatment: "recommendation-first",
+      summaryTreatment: "executive-brief",
+      sectionTreatment: "memo-panels",
+      sourceTreatment: "appendix-references"
+    }
+  },
+  "workshop-guide": {
+    theme: profileThemes["workshop-guide"],
+    strategy: {
+      defaultStructure: "workshop",
+      leadTreatment: "learning-objective",
+      summaryTreatment: "goal-prerequisites-output",
+      sectionTreatment: "guided-path",
+      sourceTreatment: "resource-list"
+    }
+  },
+  "curated-list": {
+    theme: profileThemes["curated-list"],
+    strategy: {
+      defaultStructure: "catalog",
+      leadTreatment: "curator-note",
+      summaryTreatment: "selection-criteria",
+      sectionTreatment: "ranked-rows",
+      sourceTreatment: "source-digest"
+    }
+  },
+  "editorial-column": {
+    theme: profileThemes["editorial-column"],
+    strategy: {
+      defaultStructure: "argument",
+      leadTreatment: "thesis-column",
+      summaryTreatment: "argument-thesis",
+      sectionTreatment: "column-essay",
+      sourceTreatment: "further-reading"
+    }
+  }
+};
+
 function resolveStyleProfile(
   contentTypes: UpgradedContentType[],
   requestedProfile: AdaptiveStyleProfile
@@ -320,21 +419,663 @@ function applyTokenOverrides(
   };
 }
 
-function resolveAdaptiveTheme(input: AdaptiveThemeHtmlPageInput): {
-  profile: ResolvedAdaptiveStyleProfile;
-  theme: AdaptiveInlineThemeTokens;
-} {
-  const profile = resolveStyleProfile(input.contentTypes, input.styleProfile);
-  const theme = applyTokenOverrides(profileThemes[profile], input.tokens);
+function resolveExpressionStrategy(
+  expression: AdaptiveExpressionConfigInput,
+  definition: AdaptiveProfileDefinition
+): ResolvedAdaptiveExpressionStrategy {
+  if (expression?.strategy && expression.strategy !== "auto") {
+    return expression.strategy;
+  }
 
-  return { profile, theme };
+  if (expression?.emphasis === "recommendation" || expression?.emphasis === "comparison") {
+    return "decision";
+  }
+
+  if (expression?.emphasis === "process") {
+    return "workshop";
+  }
+
+  if (expression?.emphasis === "evidence" || expression?.emphasis === "sources") {
+    return "academic";
+  }
+
+  return definition.strategy.defaultStructure;
+}
+
+function resolveAdaptiveContext(input: AdaptiveThemeHtmlPageInput): AdaptiveRenderContext {
+  const profile = resolveStyleProfile(input.contentTypes, input.styleProfile);
+  const baseDefinition = profileDefinitions[profile];
+  const theme = applyTokenOverrides(baseDefinition.theme, input.tokens);
+  const definition: AdaptiveProfileDefinition = {
+    ...baseDefinition,
+    theme
+  };
+  const strategy = resolveExpressionStrategy(input.expression, definition);
+
+  return {
+    profile,
+    theme,
+    definition,
+    strategy,
+    expression: input.expression
+  };
+}
+
+function renderParagraphGroup(
+  value: unknown,
+  options: {
+    singleTag?: "p" | "div";
+    singleStyle?: string;
+    multiWrapperStyle?: string;
+    multiParagraphStyle?: string;
+  } = {}
+): string {
+  const paragraphs = renderInlineRichTextParagraphs(value);
+
+  if (paragraphs.length === 0) {
+    return "";
+  }
+
+  if (paragraphs.length === 1) {
+    const tag = options.singleTag ?? "p";
+    const styleAttribute = options.singleStyle ? ` style="${escapeAttribute(options.singleStyle)}"` : "";
+
+    return `<${tag}${styleAttribute}>${paragraphs[0]}</${tag}>`;
+  }
+
+  const wrapperStyleAttribute = options.multiWrapperStyle
+    ? ` style="${escapeAttribute(options.multiWrapperStyle)}"`
+    : "";
+  const paragraphStyleAttribute = options.multiParagraphStyle
+    ? ` style="${escapeAttribute(options.multiParagraphStyle)}"`
+    : "";
+
+  return `<div${wrapperStyleAttribute}>${paragraphs
+    .map((paragraph) => `<p${paragraphStyleAttribute}>${paragraph}</p>`)
+    .join("")}</div>`;
+}
+
+function bodyTextStyle(
+  theme: AdaptiveInlineThemeTokens,
+  overrides: Record<string, string | number | undefined> = {}
+): string {
+  return style({ margin: 0, "font-size": theme.bodyFontSize, color: theme.muted, "line-height": 1.68, ...overrides });
+}
+
+function renderBodyText(value: unknown, theme: AdaptiveInlineThemeTokens, color = theme.muted): string {
+  return renderParagraphGroup(value, {
+    singleStyle: bodyTextStyle(theme, { color }),
+    multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "10px" }),
+    multiParagraphStyle: bodyTextStyle(theme, { color })
+  });
+}
+
+function renderAdaptiveSection(
+  kind: "expression" | "block",
+  type: string,
+  innerHtml: string,
+  context: AdaptiveRenderContext,
+  isFirst: boolean,
+  options: { background?: string; borderTop?: string } = {}
+): string {
+  const { theme } = context;
+  const attribute = kind === "expression" ? "data-expression-type" : "data-block-type";
+  const borderTop = options.borderTop ?? (isFirst ? "none" : `1px solid ${theme.borderSubtle}`);
+
+  return `<div ${attribute}="${escapeAttribute(type)}" data-expression-treatment="${escapeAttribute(
+    context.definition.strategy.sectionTreatment
+  )}" style="${escapeAttribute(
+    style({
+      padding: theme.sectionPadding,
+      background: options.background ?? theme.surface,
+      "border-top": borderTop
+    })
+  )}">${innerHtml}</div>`;
+}
+
+function renderEyebrow(value: string | undefined, context: AdaptiveRenderContext): string {
+  if (!value) {
+    return "";
+  }
+
+  const { theme } = context;
+
+  return `<div style="${escapeAttribute(
+    style({
+      "font-size": theme.smallFontSize,
+      "font-weight": 800,
+      color: theme.primary,
+      "letter-spacing": context.profile === "old-newspaper" ? "0.08em" : "0.05em",
+      "text-transform": "uppercase",
+      "margin-bottom": "8px"
+    })
+  )}">${escapeHtml(value)}</div>`;
+}
+
+function renderSectionHeading(title: string | undefined, intro: string | undefined, context: AdaptiveRenderContext): string {
+  const { theme } = context;
+
+  if (!title && !intro) {
+    return "";
+  }
+
+  return `<div style="${escapeAttribute(style({ "margin-bottom": theme.gap }))}">
+    ${title
+      ? `<h2 style="${escapeAttribute(
+          style({
+            margin: "0 0 8px 0",
+            "font-size": theme.h2FontSize,
+            "font-weight": context.profile === "old-newspaper" ? 800 : 760,
+            color: theme.text,
+            "line-height": 1.35,
+            "letter-spacing": context.profile === "old-newspaper" ? "0" : "-0.01em"
+          })
+        )}">${escapeHtml(title)}</h2>`
+      : ""}
+    ${intro ? renderBodyText(intro, theme) : ""}
+  </div>`;
+}
+
+function renderFactStrip(
+  facts: Array<{ label: string; value: string; detail?: string }> | undefined,
+  context: AdaptiveRenderContext
+): string {
+  if (!facts?.length) {
+    return "";
+  }
+
+  const { theme } = context;
+  const border = context.profile === "old-newspaper" ? `1px solid ${theme.border}` : `1px solid ${theme.borderSubtle}`;
+
+  return `<div style="${escapeAttribute(
+    style({
+      display: "grid",
+      "grid-template-columns": "repeat(auto-fit, minmax(140px, 1fr))",
+      gap: 0,
+      "margin-top": "16px",
+      border,
+      background: theme.panel
+    })
+  )}">
+    ${facts
+      .map(
+        (fact) => `<div style="${escapeAttribute(
+          style({ padding: "12px", "border-right": `1px solid ${theme.borderSubtle}`, "min-width": 0 })
+        )}">
+          <div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 800, color: theme.primary }))}">${escapeHtml(fact.label)}</div>
+          <div style="${escapeAttribute(style({ "margin-top": "4px", "font-size": theme.h3FontSize, "font-weight": 850, color: theme.text, "line-height": 1.25 }))}">${escapeHtml(fact.value)}</div>
+          ${fact.detail ? renderBodyText(fact.detail, theme) : ""}
+        </div>`
+      )
+      .join("")}
+  </div>`;
+}
+
+function renderSimpleList(items: string[] | undefined, context: AdaptiveRenderContext, ordered = false): string {
+  if (!items?.length) {
+    return "";
+  }
+
+  const { theme } = context;
+  const tag = ordered ? "ol" : "ul";
+
+  return `<${tag} style="${escapeAttribute(
+    style({ margin: "10px 0 0 0", padding: ordered ? "0 0 0 22px" : "0 0 0 18px", color: theme.muted, "font-size": theme.bodyFontSize, "line-height": 1.65 })
+  )}">${items.map((item) => `<li style="${escapeAttribute(style({ margin: "4px 0" }))}">${escapeHtml(item)}</li>`).join("")}</${tag}>`;
+}
+
+function renderTitledRows(
+  items: Array<{ title: string; body?: string }>,
+  context: AdaptiveRenderContext,
+  options: { ordered?: boolean; startAt?: number } = {}
+): string {
+  const { theme } = context;
+  const startAt = options.startAt ?? 1;
+
+  return `<div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column", gap: theme.gap }))}">
+    ${items
+      .map(
+        (item, index) => `<div style="${escapeAttribute(
+          style({
+            display: "grid",
+            "grid-template-columns": options.ordered ? "34px 1fr" : "1fr",
+            gap: "12px",
+            padding: context.profile === "old-newspaper" ? "0 0 12px 0" : theme.cardPadding,
+            background: context.profile === "old-newspaper" ? "transparent" : theme.panel,
+            border: context.profile === "old-newspaper" ? "none" : `1px solid ${theme.borderSubtle}`,
+            "border-bottom": context.profile === "old-newspaper" ? `1px solid ${theme.borderSubtle}` : undefined,
+            "border-radius": context.profile === "old-newspaper" ? "0" : theme.radiusSmall
+          })
+        )}">
+          ${options.ordered
+            ? `<div style="${escapeAttribute(
+                style({
+                  width: "28px",
+                  height: "28px",
+                  "border-radius": context.profile === "old-newspaper" ? "0" : "999px",
+                  background: theme.primarySoft,
+                  color: theme.primary,
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  "font-size": theme.smallFontSize,
+                  "font-weight": 850
+                })
+              )}">${escapeHtml(String(startAt + index))}</div>`
+            : ""}
+          <div>
+            <h3 style="${escapeAttribute(style({ margin: "0 0 5px 0", "font-size": theme.h3FontSize, "font-weight": 800, color: theme.text, "line-height": 1.35 }))}">${escapeHtml(item.title)}</h3>
+            ${item.body ? renderBodyText(item.body, theme) : ""}
+          </div>
+        </div>`
+      )
+      .join("")}
+  </div>`;
+}
+
+function renderLeadExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "lead" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const titleSize = context.expression?.hierarchy === "flat" ? theme.h2FontSize : theme.h1FontSize;
+  const background = context.profile === "old-newspaper" ? theme.surface : `linear-gradient(135deg, ${theme.surface}, ${theme.primarySoft})`;
+  const inner = `${renderEyebrow(expression.eyebrow ?? context.definition.strategy.leadTreatment, context)}
+    ${expression.title
+      ? `<h1 style="${escapeAttribute(
+          style({ margin: 0, "font-size": titleSize, "font-weight": 880, color: theme.text, "line-height": 1.18, "letter-spacing": context.profile === "old-newspaper" ? "0" : "-0.025em" })
+        )}">${escapeHtml(expression.title)}</h1>`
+      : ""}
+    ${renderParagraphGroup(expression.body, {
+      singleStyle: bodyTextStyle(theme, {
+        "margin-top": expression.title ? "12px" : "0",
+        color: theme.text,
+        "font-size": context.profile === "old-newspaper" ? "17px" : theme.bodyFontSize,
+        "font-weight": context.strategy === "decision" ? 750 : 500
+      }),
+      multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "10px", "margin-top": expression.title ? "12px" : "0" }),
+      multiParagraphStyle: bodyTextStyle(theme, { color: theme.text, "font-size": context.profile === "old-newspaper" ? "17px" : theme.bodyFontSize })
+    })}
+    ${renderFactStrip(expression.facts, context)}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst, { background });
+}
+
+function renderKeyTakeawaysExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "key-takeaways" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const inner = `${renderSectionHeading(expression.title ?? "Key takeaways", expression.intro, context)}
+    ${renderTitledRows(expression.items, context, { ordered: context.expression?.hierarchy !== "flat" })}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderExecutiveSummaryExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "executive-summary" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(expression.title ?? "Executive summary", undefined, context)}
+    ${expression.ask
+      ? `<div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 800, color: theme.primary, "margin-bottom": "8px" }))}">Ask: ${escapeHtml(expression.ask)}</div>`
+      : ""}
+    <div style="${escapeAttribute(
+      style({ padding: theme.cardPadding, background: theme.primarySoft, border: `1px solid ${theme.primary}`, "border-radius": theme.radiusSmall })
+    )}">
+      <div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 850, color: theme.primary, "text-transform": "uppercase", "letter-spacing": "0.04em" }))}">Recommendation first</div>
+      ${renderParagraphGroup(expression.recommendation, {
+        singleStyle: bodyTextStyle(theme, { color: theme.text, "font-weight": 800, "font-size": theme.h3FontSize, "margin-top": "6px" }),
+        multiWrapperStyle: style({ display: "flex", "flex-direction": "column", gap: "8px", "margin-top": "6px" }),
+        multiParagraphStyle: bodyTextStyle(theme, { color: theme.text, "font-weight": 800, "font-size": theme.h3FontSize })
+      })}
+    </div>
+    ${renderSimpleList(expression.decisionHeadlines, context, false)}
+    ${expression.rationale ? renderSectionHeading("Rationale", expression.rationale, context) : ""}
+    ${expression.impact ? renderSectionHeading("Expected impact", expression.impact, context) : ""}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderEvidenceMapExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "evidence-map" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const evidence = expression.evidence.map((item) => ({
+    title: `${item.title}${item.confidence ? ` (${item.confidence} confidence)` : ""}`,
+    body: item.body
+  }));
+  const inner = `${renderSectionHeading(expression.title ?? "Evidence map", undefined, context)}
+    <div style="${escapeAttribute(style({ padding: theme.cardPadding, background: theme.panel, border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall, "margin-bottom": theme.gap }))}">
+      <div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 850, color: theme.primary }))}">Claim</div>
+      ${renderBodyText(expression.claim, theme, theme.text)}
+    </div>
+    ${renderTitledRows(evidence, context, { ordered: true })}
+    ${expression.limitations?.length ? `<div style="${escapeAttribute(style({ "margin-top": theme.gap }))}">${renderSectionHeading("Limitations", undefined, context)}${renderSimpleList(expression.limitations, context)}</div>` : ""}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderDecisionMatrixExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "decision-matrix" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const verdictColor = {
+    recommended: theme.primary,
+    acceptable: theme.accent,
+    risky: "#b45309",
+    reject: "#b91c1c"
+  } as const;
+  const inner = `${renderSectionHeading(expression.title, expression.intro, context)}
+    ${expression.recommendation
+      ? `<div style="${escapeAttribute(style({ padding: theme.cardPadding, background: theme.primarySoft, border: `1px solid ${theme.primary}`, "border-radius": theme.radiusSmall, "margin-bottom": theme.gap }))}">${renderBodyText(expression.recommendation, theme, theme.text)}</div>`
+      : ""}
+    <div style="${escapeAttribute(style({ overflow: "auto", border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall }))}">
+      <table style="${escapeAttribute(style({ width: "100%", "border-collapse": "collapse", "font-size": theme.smallFontSize, color: theme.text }))}">
+        <thead><tr>
+          <th style="${escapeAttribute(style({ padding: "10px", background: theme.panel, "border-bottom": `1px solid ${theme.borderSubtle}`, "text-align": "left" }))}">Option</th>
+          <th style="${escapeAttribute(style({ padding: "10px", background: theme.panel, "border-bottom": `1px solid ${theme.borderSubtle}`, "text-align": "left" }))}">Verdict</th>
+          ${expression.criteria.map((criterion) => `<th style="${escapeAttribute(style({ padding: "10px", background: theme.panel, "border-bottom": `1px solid ${theme.borderSubtle}`, "text-align": "left" }))}">${escapeHtml(criterion)}</th>`).join("")}
+          <th style="${escapeAttribute(style({ padding: "10px", background: theme.panel, "border-bottom": `1px solid ${theme.borderSubtle}`, "text-align": "left" }))}">Rationale</th>
+        </tr></thead>
+        <tbody>${expression.options
+          .map(
+            (option) => `<tr>
+              <td style="${escapeAttribute(style({ padding: "10px", "border-top": `1px solid ${theme.borderSubtle}`, "font-weight": 800 }))}">${escapeHtml(option.name)}</td>
+              <td style="${escapeAttribute(style({ padding: "10px", "border-top": `1px solid ${theme.borderSubtle}`, color: option.verdict ? verdictColor[option.verdict] : theme.muted, "font-weight": 800 }))}">${escapeHtml(option.verdict ?? "-")}</td>
+              ${expression.criteria.map((_, index) => `<td style="${escapeAttribute(style({ padding: "10px", "border-top": `1px solid ${theme.borderSubtle}` }))}">${escapeHtml(option.scores?.[index] ?? "")}</td>`).join("")}
+              <td style="${escapeAttribute(style({ padding: "10px", "border-top": `1px solid ${theme.borderSubtle}`, color: theme.muted }))}">${escapeHtml(option.rationale ?? "")}</td>
+            </tr>`
+          )
+          .join("")}</tbody>
+      </table>
+    </div>`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderArgumentMapExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "argument-map" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(expression.title ?? "Argument map", undefined, context)}
+    <div style="${escapeAttribute(style({ padding: theme.cardPadding, background: theme.panel, border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall, "margin-bottom": theme.gap }))}">
+      <div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 850, color: theme.primary }))}">Thesis</div>
+      ${renderBodyText(expression.claim, theme, theme.text)}
+    </div>
+    ${renderSectionHeading("Reasons", undefined, context)}
+    ${renderTitledRows(expression.reasons, context, { ordered: true })}
+    ${expression.counterarguments?.length ? `<div style="${escapeAttribute(style({ "margin-top": theme.gap }))}">${renderSectionHeading("Counterarguments", undefined, context)}${renderTitledRows(expression.counterarguments, context)}</div>` : ""}
+    ${expression.conclusion ? `<div style="${escapeAttribute(style({ "margin-top": theme.gap }))}">${renderSectionHeading("Conclusion", expression.conclusion, context)}</div>` : ""}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderProcessGuideExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "process-guide" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const stepRows = expression.steps.map((step) => ({
+    title: step.title,
+    body: [step.body, step.output ? `Output: ${step.output}` : undefined, step.checkpoint ? `Checkpoint: ${step.checkpoint}` : undefined]
+      .filter(Boolean)
+      .join("\n\n")
+  }));
+  const inner = `${renderSectionHeading(expression.title, undefined, context)}
+    <div style="${escapeAttribute(style({ padding: theme.cardPadding, background: theme.primarySoft, border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall, "margin-bottom": theme.gap }))}">
+      <div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 850, color: theme.primary }))}">Goal</div>
+      ${renderBodyText(expression.goal, theme, theme.text)}
+    </div>
+    ${expression.prerequisites?.length ? `<div style="${escapeAttribute(style({ "margin-bottom": theme.gap }))}">${renderSectionHeading("Prerequisites", undefined, context)}${renderSimpleList(expression.prerequisites, context)}</div>` : ""}
+    ${renderTitledRows(stepRows, context, { ordered: true })}
+    ${expression.checks?.length ? `<div style="${escapeAttribute(style({ "margin-top": theme.gap }))}">${renderSectionHeading("Checks", undefined, context)}${renderSimpleList(expression.checks, context)}</div>` : ""}`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderRankedListExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "ranked-list" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(expression.title, expression.intro, context)}
+    <div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column", gap: theme.gap }))}">${expression.items
+      .map(
+        (item, index) => `<div style="${escapeAttribute(style({ display: "grid", "grid-template-columns": "42px 1fr", gap: "12px", padding: theme.cardPadding, background: theme.panel, border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall }))}">
+          <div style="${escapeAttribute(style({ "font-size": theme.h3FontSize, "font-weight": 900, color: theme.primary }))}">${escapeHtml(String(item.rank ?? index + 1))}</div>
+          <div>
+            <h3 style="${escapeAttribute(style({ margin: "0 0 5px 0", "font-size": theme.h3FontSize, "font-weight": 800, color: theme.text }))}">${escapeHtml(item.title)}</h3>
+            ${item.fit ? `<div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, "font-weight": 800, color: theme.accent, "margin-bottom": "5px" }))}">${escapeHtml(item.fit)}</div>` : ""}
+            ${item.body ? renderBodyText(item.body, theme) : ""}
+            ${item.tags?.length ? `<div style="${escapeAttribute(style({ display: "flex", "flex-wrap": "wrap", gap: "6px", "margin-top": "8px" }))}">${item.tags.map((tag) => `<span style="${escapeAttribute(style({ padding: "3px 7px", background: theme.accentSoft, color: theme.accent, "border-radius": "999px", "font-size": theme.smallFontSize, "font-weight": 750 }))}">${escapeHtml(tag)}</span>`).join("")}</div>` : ""}
+          </div>
+        </div>`
+      )
+      .join("")}</div>`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderSectionOutlineExpression(
+  expression: Extract<AdaptiveExpressionInput, { type: "section-outline" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(expression.title, expression.intro, context)}
+    <div style="${escapeAttribute(style({ display: "flex", "flex-direction": "column", gap: theme.gap }))}">${expression.sections
+      .map(
+        (section, index) => `<div style="${escapeAttribute(style({ padding: theme.cardPadding, background: theme.panel, border: `1px solid ${theme.borderSubtle}`, "border-radius": theme.radiusSmall }))}">
+          <h3 style="${escapeAttribute(style({ margin: "0 0 6px 0", "font-size": theme.h3FontSize, "font-weight": 850, color: theme.text }))}">${escapeHtml(`${index + 1}. ${section.title}`)}</h3>
+          ${section.body ? renderBodyText(section.body, theme) : ""}
+          ${section.children?.length ? `<div style="${escapeAttribute(style({ "margin-top": "8px" }))}">${renderTitledRows(section.children, context)}</div>` : ""}
+        </div>`
+      )
+      .join("")}</div>`;
+
+  return renderAdaptiveSection("expression", expression.type, inner, context, isFirst);
+}
+
+function renderAdaptiveExpression(
+  expression: AdaptiveExpressionInput,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  switch (expression.type) {
+    case "lead":
+      return renderLeadExpression(expression, context, isFirst);
+    case "key-takeaways":
+      return renderKeyTakeawaysExpression(expression, context, isFirst);
+    case "executive-summary":
+      return renderExecutiveSummaryExpression(expression, context, isFirst);
+    case "evidence-map":
+      return renderEvidenceMapExpression(expression, context, isFirst);
+    case "decision-matrix":
+      return renderDecisionMatrixExpression(expression, context, isFirst);
+    case "argument-map":
+      return renderArgumentMapExpression(expression, context, isFirst);
+    case "process-guide":
+      return renderProcessGuideExpression(expression, context, isFirst);
+    case "ranked-list":
+      return renderRankedListExpression(expression, context, isFirst);
+    case "section-outline":
+      return renderSectionOutlineExpression(expression, context, isFirst);
+  }
+}
+
+function getResolvedExpressions(input: AdaptiveThemeHtmlPageInput, context: AdaptiveRenderContext): AdaptiveExpressionInput[] {
+  const explicitExpressions = input.expressions ?? [];
+  const explicitTypes = new Set(explicitExpressions.map((expression) => expression.type));
+  const generated: AdaptiveExpressionInput[] = [];
+
+  if (context.expression?.coreViewpoint && !explicitTypes.has("lead") && !explicitTypes.has("executive-summary")) {
+    if (context.strategy === "decision") {
+      generated.push({
+        type: "executive-summary",
+        title: input.title,
+        recommendation: context.expression.coreViewpoint,
+        decisionHeadlines: context.expression.keyTakeaways
+      });
+    } else {
+      generated.push({
+        type: "lead",
+        eyebrow: context.expression.emphasis ?? context.strategy,
+        title: input.title,
+        body: context.expression.coreViewpoint
+      });
+    }
+  }
+
+  if (context.expression?.keyTakeaways?.length && !explicitTypes.has("key-takeaways")) {
+    generated.push({
+      type: "key-takeaways",
+      title: "Key takeaways",
+      items: context.expression.keyTakeaways.map((takeaway, index) => ({
+        title: `Point ${index + 1}`,
+        body: takeaway
+      }))
+    });
+  }
+
+  return [...generated, ...explicitExpressions];
+}
+
+function renderAdaptiveHero(
+  block: Extract<UpgradedHtmlBlockInput, { type: "hero" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const facts = block.highlights?.map((item) => ({ label: item.label, value: item.value, detail: item.detail }));
+  const href = normalizeRenderableHref(block.cta?.href);
+  const meta = block.meta?.length
+    ? `<div style="${escapeAttribute(style({ display: "flex", "flex-wrap": "wrap", gap: "7px", "margin-top": "12px" }))}">${block.meta
+        .map(
+          (item) => `<span style="${escapeAttribute(style({ padding: "3px 8px", background: theme.primarySoft, color: theme.primary, "border-radius": context.profile === "old-newspaper" ? "0" : "999px", "font-size": theme.smallFontSize, "font-weight": 800 }))}">${escapeHtml(item)}</span>`
+        )
+        .join("")}</div>`
+    : "";
+  const cta = block.cta && href
+    ? `<a href="${escapeAttribute(href)}" style="${escapeAttribute(style({ display: "inline-block", "margin-top": "14px", padding: "8px 14px", background: theme.primary, color: "#ffffff", "text-decoration": "none", "border-radius": context.profile === "old-newspaper" ? "0" : theme.radiusSmall, "font-size": theme.smallFontSize, "font-weight": 800 }))}">${escapeHtml(block.cta.label)}</a>`
+    : "";
+  const inner = `${renderEyebrow(block.eyebrow ?? context.definition.strategy.leadTreatment, context)}
+    <h1 style="${escapeAttribute(style({ margin: 0, "font-size": theme.h1FontSize, "font-weight": 880, color: theme.text, "line-height": 1.2, "letter-spacing": context.profile === "old-newspaper" ? "0" : "-0.025em" }))}">${escapeHtml(block.title)}</h1>
+    ${block.subtitle ? renderBodyText(block.subtitle, theme, theme.text) : ""}
+    ${meta}
+    ${renderFactStrip(facts, context)}
+    ${cta}`;
+
+  return renderAdaptiveSection("block", block.type, inner, context, isFirst, {
+    background: context.profile === "old-newspaper" ? theme.surface : `linear-gradient(135deg, ${theme.surface}, ${theme.primarySoft})`
+  });
+}
+
+function renderAdaptiveSummaryCard(
+  block: Extract<UpgradedHtmlBlockInput, { type: "summary-card" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(block.title, undefined, context)}
+    <div style="${escapeAttribute(style({ padding: context.profile === "old-newspaper" ? "0" : theme.cardPadding, background: context.profile === "old-newspaper" ? "transparent" : theme.panel, border: context.profile === "old-newspaper" ? "none" : `1px solid ${theme.borderSubtle}`, "border-radius": context.profile === "old-newspaper" ? "0" : theme.radiusSmall }))}">
+      ${renderBodyText(block.body, theme, theme.text)}
+    </div>
+    ${block.items?.length ? `<div style="${escapeAttribute(style({ "margin-top": theme.gap }))}">${renderTitledRows(block.items, context, { ordered: context.strategy !== "academic" })}</div>` : ""}`;
+
+  return renderAdaptiveSection("block", block.type, inner, context, isFirst);
+}
+
+function renderAdaptiveStatGrid(
+  block: Extract<UpgradedHtmlBlockInput, { type: "stat-grid" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const inner = `${renderSectionHeading(block.title, block.intro, context)}${renderFactStrip(block.items, context)}`;
+
+  return renderAdaptiveSection("block", block.type, inner, context, isFirst);
+}
+
+function renderAdaptiveSteps(
+  block: Extract<UpgradedHtmlBlockInput, { type: "steps" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const inner = `${renderSectionHeading(block.title, block.intro, context)}${renderTitledRows(block.items, context, { ordered: true })}`;
+
+  return renderAdaptiveSection("block", block.type, inner, context, isFirst);
+}
+
+function renderAdaptiveSourceList(
+  block: Extract<UpgradedHtmlBlockInput, { type: "source-list" }>,
+  context: AdaptiveRenderContext,
+  isFirst: boolean
+): string {
+  const { theme } = context;
+  const inner = `${renderSectionHeading(block.title, block.intro, context)}
+    <ol style="${escapeAttribute(style({ margin: 0, padding: "0 0 0 22px", color: theme.muted, "font-size": theme.bodyFontSize, "line-height": 1.65 }))}">${block.items
+      .map((item) => {
+        const href = normalizeRenderableHref(item.href);
+        const label = href
+          ? `<a href="${escapeAttribute(href)}" style="${escapeAttribute(style({ color: theme.primary, "font-weight": 800, "text-decoration": "none" }))}">${escapeHtml(item.label)}</a>`
+          : `<span style="${escapeAttribute(style({ color: theme.text, "font-weight": 800 }))}">${escapeHtml(item.label)}</span>`;
+
+        return `<li style="${escapeAttribute(style({ margin: "8px 0" }))}">${label}${item.description ? `<div style="${escapeAttribute(style({ "font-size": theme.smallFontSize, color: theme.muted }))}">${escapeHtml(item.description)}</div>` : ""}</li>`;
+      })
+      .join("")}</ol>`;
+
+  return renderAdaptiveSection("block", block.type, inner, context, isFirst);
+}
+
+function renderAdaptiveBlock(block: UpgradedHtmlBlockInput, context: AdaptiveRenderContext, isFirst: boolean): string {
+  switch (block.type) {
+    case "hero":
+      return renderAdaptiveHero(block, context, isFirst);
+    case "summary-card":
+      return renderAdaptiveSummaryCard(block, context, isFirst);
+    case "stat-grid":
+      return renderAdaptiveStatGrid(block, context, isFirst);
+    case "steps":
+      return renderAdaptiveSteps(block, context, isFirst);
+    case "source-list":
+      return renderAdaptiveSourceList(block, context, isFirst);
+    default:
+      return renderBlock(block, context.theme, isFirst);
+  }
+}
+
+function getExpressionTypes(expressions: AdaptiveExpressionInput[], blocks: UpgradedHtmlBlockInput[]): string {
+  const types = expressions.map((expression) => expression.type);
+
+  if (types.length > 0) {
+    return types.join(",");
+  }
+
+  return blocks.length > 0 ? blocks.map((block) => `block:${block.type}`).join(",") : "none";
 }
 
 export async function renderAdaptiveThemeInlineHtmlFragment(input: AdaptiveThemeHtmlPageInput): Promise<string> {
-  const { profile, theme } = resolveAdaptiveTheme(input);
+  const context = resolveAdaptiveContext(input);
+  const { profile, theme, strategy } = context;
+  const expressions = getResolvedExpressions(input, context);
+  const expressionHtml = expressions.map((expression, index) => renderAdaptiveExpression(expression, context, index === 0));
+  const blockHtml = input.blocks.map((block, index) => renderAdaptiveBlock(block, context, expressionHtml.length === 0 && index === 0));
   const html = `<div data-html-render-mcp="adaptive-theme-inline" data-content-types="${escapeAttribute(
     input.contentTypes.join(",")
-  )}" data-style-profile="${escapeAttribute(profile)}" style="${escapeAttribute(
+  )}" data-style-profile="${escapeAttribute(profile)}" data-expression-strategy="${escapeAttribute(strategy)}" data-expression-types="${escapeAttribute(
+    getExpressionTypes(expressions, input.blocks)
+  )}" style="${escapeAttribute(
     style({
       margin: "16px 0",
       background: theme.outerBackground,
@@ -348,7 +1089,8 @@ export async function renderAdaptiveThemeInlineHtmlFragment(input: AdaptiveTheme
       overflow: "hidden"
     })
   )}">
-    ${input.blocks.map((block, index) => renderBlock(block, theme, index === 0)).join("")}
+    ${expressionHtml.join("")}
+    ${blockHtml.join("")}
     ${renderFooter(input.footer, theme)}
   </div>`;
 
