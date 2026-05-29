@@ -23,7 +23,7 @@ interface BaseInlineThemeTokens {
   borderSubtle: string;
 }
 
-interface UpgradedInlineThemeTokens extends BaseInlineThemeTokens {
+export interface UpgradedInlineThemeTokens extends BaseInlineThemeTokens {
   borderCss: string;
   radius: string;
   radiusSmall: string;
@@ -94,7 +94,7 @@ const baseThemes: Record<HtmlTheme, BaseInlineThemeTokens> = {
   }
 };
 
-function style(rules: Record<string, string | number | undefined>): string {
+export function style(rules: Record<string, string | number | undefined>): string {
   return Object.entries({
     ...rules,
     "text-align": "left !important",
@@ -473,7 +473,7 @@ function renderCallout(block: Extract<UpgradedHtmlBlockInput, { type: "callout" 
   </div>`;
 }
 
-function renderBlock(block: UpgradedHtmlBlockInput, theme: UpgradedInlineThemeTokens, isFirst: boolean): string {
+export function renderBlock(block: UpgradedHtmlBlockInput, theme: UpgradedInlineThemeTokens, isFirst: boolean): string {
   switch (block.type) {
     case "hero":
       return renderHero(block, theme);
@@ -551,7 +551,7 @@ function renderBlock(block: UpgradedHtmlBlockInput, theme: UpgradedInlineThemeTo
   }
 }
 
-function renderFooter(footer: UpgradedHtmlPageInput["footer"], theme: UpgradedInlineThemeTokens): string {
+export function renderFooter(footer: UpgradedHtmlPageInput["footer"], theme: UpgradedInlineThemeTokens): string {
   if (!footer) {
     return "";
   }

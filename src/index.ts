@@ -12,8 +12,13 @@ import {
   availableThemes,
   htmlPageSchema
 } from "./schemas/htmlPageSchema.js";
+import { renderAdaptiveThemeInlineHtmlFragment } from "./renderers/renderAdaptiveThemeInlineHtml.js";
 import { renderInlineHtmlFragment } from "./renderers/renderInlineHtml.js";
 import { renderUpgradedInlineHtmlFragment } from "./renderers/renderUpgradedInlineHtml.js";
+import {
+  adaptiveThemeHtmlPageSchema,
+  availableAdaptiveStyleProfiles
+} from "./schemas/adaptiveThemeHtmlPageSchema.js";
 import {
   availableUpgradedBlockTypes,
   availableUpgradedContentTypes,
@@ -172,6 +177,10 @@ function normalizeRenderUpgradedHtmlArguments(value: unknown): unknown {
   return unwrappedArgs;
 }
 
+function normalizeRenderAdaptiveThemeHtmlArguments(value: unknown): unknown {
+  return normalizeRenderUpgradedHtmlArguments(value);
+}
+
 const renderFinalHtmlSchema = z.preprocess(
   normalizeRenderFinalHtmlArguments,
   z.object({
@@ -183,6 +192,13 @@ const renderUpgradedHtmlSchema = z.preprocess(
   normalizeRenderUpgradedHtmlArguments,
   z.object({
     page: upgradedHtmlPageSchema
+  })
+);
+
+const renderAdaptiveThemeHtmlSchema = z.preprocess(
+  normalizeRenderAdaptiveThemeHtmlArguments,
+  z.object({
+    page: adaptiveThemeHtmlPageSchema
   })
 );
 
@@ -588,6 +604,49 @@ const upgradedHtmlInputSchema = {
   }
 } as const;
 
+const adaptiveThemePageInputSchema = {
+  type: "object",
+  required: ["title", "blocks"],
+  properties: {
+    title: { type: "string" },
+    description: { type: "string" },
+    lang: { type: "string", default: "zh-CN" },
+    contentTypes: {
+      type: "array",
+      minItems: 1,
+      items: { type: "string", enum: availableUpgradedContentTypes },
+      default: ["news"]
+    },
+    styleProfile: {
+      type: "string",
+      enum: availableAdaptiveStyleProfiles,
+      default: "auto",
+      description:
+        "Visual style profile. Use auto to map contentTypes automatically: news->old-newspaper, research->academic-journal, explain->clean-magazine, compare->decision-brief, tutorial->workshop-guide, list->curated-list, opinion->editorial-column."
+    },
+    tokens: upgradedDesignTokensInputSchema,
+    blocks: {
+      type: "array",
+      minItems: 1,
+      items: upgradedBlockInputSchema,
+      description: `Layout blocks selected from: ${availableUpgradedBlockTypes.join(", ")}.`
+    },
+    footer: footerInputSchema
+  }
+} as const;
+
+const adaptiveThemeHtmlInputSchema = {
+  type: "object",
+  required: ["page"],
+  properties: {
+    page: {
+      ...adaptiveThemePageInputSchema,
+      description:
+        "Complete adaptive-theme page object. Pass this as an object, not a JSON string; JSON-string compatibility is only a fallback."
+    }
+  }
+} as const;
+
 const server = new Server(
   {
     name: "html-render-mcp",
@@ -636,6 +695,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       description:
         "Independent upgraded one-shot HTML renderer for Cherry Studio. Use this after all searching, reasoning, and content drafting are complete when you want the rule-system/design-token/content-type workflow from the upgraded technical plan. It accepts a complete upgraded page under the page field and returns one continuous inline-styled HTML fragment. This tool does not change render_final_html.",
       inputSchema: upgradedHtmlInputSchema
+    },
+    {
+      name: "render_adaptive_theme_html",
+      description:
+        "Adaptive one-shot HTML renderer for Cherry Studio with stronger content-aware visual styling. Use this after all searching, reasoning, and content drafting are complete when the page should match a style profile automatically, for example news content rendered as an old-newspaper serif layout. It reuses upgraded blocks, accepts styleProfile auto or an explicit profile, and returns one continuous inline-styled HTML fragment.",
+      inputSchema: adaptiveThemeHtmlInputSchema
     }
   ]
 }));
@@ -659,9 +724,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return textContent(html);
       }
 
+      case "render_adaptive_theme_html": {
+        const { page } = renderAdaptiveThemeHtmlSchema.parse(args);
+        const html = await renderAdaptiveThemeInlineHtmlFragment(page);
+
+        return textContent(html);
+      }
+
       default:
         throw new Error(
-          `Tool ${request.params.name} is disabled. This MCP server exposes render_final_html and render_upgraded_html for one-shot Cherry Studio HTML output.`
+          `Tool ${request.params.name} is disabled. This MCP server exposes render_final_html, render_upgraded_html, and render_adaptive_theme_html for one-shot Cherry Studio HTML output.`
         );
     }
   } catch (error) {
