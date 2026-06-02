@@ -2,7 +2,7 @@ import type { HtmlPageInput } from "../schemas/htmlPageSchema.js";
 import { escapeAttribute, escapeHtml } from "../utils/escapeHtml.js";
 import { formatHtml } from "../utils/formatHtml.js";
 import { normalizeRenderableHref } from "../utils/normalizeRenderableHref.js";
-import { renderInlineRichTextParagraphs } from "../utils/renderInlineRichText.js";
+import { renderParagraphGroup } from "./shared/paragraph.js";
 import { baseCss } from "./templates.js";
 
 function renderCta(cta: { label: string; href?: string } | undefined): string {
@@ -13,40 +13,6 @@ function renderCta(cta: { label: string; href?: string } | undefined): string {
   }
 
   return `<a class="button" href="${escapeAttribute(href)}">${escapeHtml(cta.label)}</a>`;
-}
-
-function renderParagraphGroup(
-  value: unknown,
-  options: {
-    singleTag?: "p" | "div";
-    singleClassName?: string;
-    multiWrapperClassName?: string;
-    multiParagraphClassName?: string;
-  } = {}
-): string {
-  const paragraphs = renderInlineRichTextParagraphs(value);
-
-  if (paragraphs.length === 0) {
-    return "";
-  }
-
-  if (paragraphs.length === 1) {
-    const tag = options.singleTag ?? "p";
-    const classAttribute = options.singleClassName ? ` class="${escapeAttribute(options.singleClassName)}"` : "";
-
-    return `<${tag}${classAttribute}>${paragraphs[0]}</${tag}>`;
-  }
-
-  const wrapperClassAttribute = options.multiWrapperClassName
-    ? ` class="${escapeAttribute(options.multiWrapperClassName)}"`
-    : "";
-  const paragraphClassAttribute = options.multiParagraphClassName
-    ? ` class="${escapeAttribute(options.multiParagraphClassName)}"`
-    : "";
-
-  return `<div${wrapperClassAttribute}>${paragraphs
-    .map((paragraph) => `<p${paragraphClassAttribute}>${paragraph}</p>`)
-    .join("")}</div>`;
 }
 
 function renderSection(section: HtmlPageInput["sections"][number]): string {
