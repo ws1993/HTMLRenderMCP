@@ -15,6 +15,7 @@ This project is structured around small, style-specific modules so rendering log
 src/index.ts
   -> src/server/createMcpServer.ts
     -> src/tools/*
+      -> src/preflight/*
       -> src/renderers/*
         -> src/renderers/{shared,upgraded,adaptive,informationStructure}/*
         -> src/styles/{basic,upgraded,adaptive}/index.ts
@@ -31,11 +32,18 @@ src/index.ts
 - `src/tools/*` contains one handler per tool.
 - `src/toolSchemas/*` contains MCP JSON schema declarations.
 - `src/adapters/*` contains compatibility and input-shaping helpers such as JSON string parsing.
+- `src/preflight/*` contains guidance and validation logic for non-final pre-render checks.
 
 ### Schemas
 
 - `src/schemas/*` defines typed input contracts for renderers and tools.
 - Schema modules should not import renderer or tool implementation details.
+
+### Preflight
+
+- `src/preflight/htmlRenderPreflight.ts` owns guidance, semantic readiness checks, schema diagnostic shaping, and dry-run summaries for render preflight tools.
+- Preflight modules may import schemas and renderer facades to validate renderability, but must not return final HTML.
+- Tool handlers should keep only MCP plumbing and delegate preflight behavior to this package.
 
 ## Renderer layout
 

@@ -2,14 +2,17 @@
 
 面向 Cherry Studio 的本地 MCP Server，用于把完整结构化页面一次性渲染成可直接显示在对话消息里的 HTML 片段。
 
-当前版本暴露四个最终渲染工具：
+当前版本暴露两个渲染前预检工具和四个最终渲染工具：
+
+- `guide_html_render_page`：渲染前指导工具。模型在生成 `render_adaptive_theme_html` 或 `render_information_structure_html` 的 `page` JSON 前先调用它，获得推荐的目标工具、信息结构、内容类型、视觉画像、表达策略、语义表达顺序、页面骨架和生成规则。它不渲染最终 HTML。
+- `validate_html_render_page`：渲染前检校工具。模型生成 `page` JSON 后、最终渲染前调用它，快速检查 schema 错误、常见生成错误、结构/主题/策略漂移、Markdown-heavy 富文本和 dry-run 可渲染性。它只返回 JSON 诊断，不返回最终 HTML。
 
 - `render_final_html`：最终一次性 HTML 渲染。模型应先完成全部搜索、阅读、分析和内容整理，最后调用一次本工具生成完整连续的 HTML 页面片段。
 - `render_upgraded_html`：升级版最终一次性 HTML 渲染。它是完全独立的新工具，参考 `升级技术方案.md` 的“规则系统 + 设计令牌 + 内容类型策略 + 布局组件语法”方案，适合生成更结构化的研究、对比、教程、解读等页面。
 - `render_adaptive_theme_html`：自适应主题最终一次性 HTML 渲染。它从“按内容类型换皮”升级为主题感知的信息表达系统：会根据 `contentTypes` / `styleProfile` 自动选择更合适的信息结构，例如新闻倒金字塔、决策简报、学术证据、工作坊路径、观点论证或精选清单。优先使用 `expression` / `expressions` 描述语义，原有 `blocks` 仍保持兼容。
 - `render_information_structure_html`：信息结构升级版一次性 HTML 渲染。它参考 `信息结构调整.md`，在 `render_adaptive_theme_html` 的自适应表达基础上显式支持新闻、研究、科普、对比、教程、清单、观点七类信息骨架，并自动匹配对应的视觉风格与表达策略。
 
-这个项目不再默认暴露逐段渲染、外部预览、导出文件、校验等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。
+这个项目不再默认暴露逐段渲染、外部预览、导出文件等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。新增预检工具只返回指导或诊断 JSON，最终 HTML 仍由最终渲染工具一次性输出。
 
 ## 安装与构建
 
@@ -62,6 +65,16 @@ npm run build
 
 ## 推荐提示词
 
+预检稳定渲染流程，推荐用于 `render_adaptive_theme_html` / `render_information_structure_html`：
+
+```text
+请先完成全部搜索、阅读、分析和内容整理，不要在搜索过程中调用 html-render-mcp。
+整理完成后，先调用 guide_html_render_page 获取推荐的信息结构、表达模块和 page JSON 骨架。
+然后根据骨架生成完整 page JSON，并调用 validate_html_render_page 做最终渲染前检校。
+只有当 validate_html_render_page 返回 readyToRender: true 时，才最后调用一次对应的 render_adaptive_theme_html 或 render_information_structure_html。
+最终回复只输出最终渲染工具返回的完整连续 HTML 片段，不要输出预检 JSON，不要使用 Markdown 代码块包裹 HTML，不要一段一段渲染。
+```
+
 默认稳定渲染模式，调用 `render_final_html`：
 
 ```text
@@ -101,6 +114,45 @@ styleProfile 默认使用 auto，让工具按结构自动匹配 old-newspaper、
 ```
 
 ## 工具输入
+
+调用 `guide_html_render_page`：
+
+```json
+{
+  "title": "AI 工具选型简报",
+  "structure": "compare",
+  "contentTypes": ["compare"],
+  "targetTool": "render_information_structure_html"
+}
+```
+
+调用 `validate_html_render_page`：
+
+```json
+{
+  "targetTool": "render_information_structure_html",
+  "page": {
+    "title": "AI 工具选型简报",
+    "structure": "compare",
+    "expression": {
+      "coreViewpoint": "如果目标是快速上线，优先选择方案 A；如果目标是长期扩展，选择方案 B。"
+    },
+    "expressions": [
+      {
+        "type": "decision-matrix",
+        "title": "方案对比矩阵",
+        "criteria": ["上线速度", "维护成本"],
+        "options": [
+          { "name": "方案 A", "verdict": "recommended", "scores": ["高", "中"], "rationale": "实现成本低。" },
+          { "name": "方案 B", "verdict": "acceptable", "scores": ["中", "高"], "rationale": "长期能力强。" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+如果检校返回 `readyToRender: false`，先按 `errors` / `warnings` 修改 `page`，不要调用最终渲染工具。常见阻断错误包括：`comparison-table.rows[].cells` 被生成为字符串而不是字符串数组、必填字段缺失、表达类型字段不完整、JSON 字符串转义错误。
 
 调用 `render_final_html`：
 
