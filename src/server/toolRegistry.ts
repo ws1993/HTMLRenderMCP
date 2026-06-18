@@ -4,12 +4,20 @@ import { renderInformationStructureHtmlTool } from "../tools/renderInformationSt
 import { renderUpgradedHtmlTool } from "../tools/renderUpgradedHtmlTool.js";
 import { guideHtmlRenderPageTool } from "../tools/guideHtmlRenderPageTool.js";
 import { validateHtmlRenderPageTool } from "../tools/validateHtmlRenderPageTool.js";
+import { assembleArticleHtmlPageTool } from "../tools/assembleArticleHtmlPageTool.js";
+import { guideArticleHtmlGenerationTool } from "../tools/guideArticleHtmlGenerationTool.js";
+import { validateArticleHtmlPlanTool } from "../tools/validateArticleHtmlPlanTool.js";
+import { validateArticleSectionDraftTool } from "../tools/validateArticleSectionDraftTool.js";
 import type { HtmlRenderTool } from "../tools/types.js";
 
 const disabledToolsMessage =
-  "This MCP server exposes guide_html_render_page and validate_html_render_page for preflight checks, plus render_final_html, render_upgraded_html, render_adaptive_theme_html, and render_information_structure_html for one-shot Cherry Studio HTML output.";
+  "This MCP server exposes article harness tools for upstream planning/section assembly, guide_html_render_page and validate_html_render_page for render preflight checks, plus render_final_html, render_upgraded_html, render_adaptive_theme_html, and render_information_structure_html for one-shot Cherry Studio HTML output.";
 
 export const htmlRenderTools: HtmlRenderTool[] = [
+  guideArticleHtmlGenerationTool,
+  validateArticleHtmlPlanTool,
+  validateArticleSectionDraftTool,
+  assembleArticleHtmlPageTool,
   guideHtmlRenderPageTool,
   validateHtmlRenderPageTool,
   renderFinalHtmlTool,

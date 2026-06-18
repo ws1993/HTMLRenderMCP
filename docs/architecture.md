@@ -15,6 +15,7 @@ This project is structured around small, style-specific modules so rendering log
 src/index.ts
   -> src/server/createMcpServer.ts
     -> src/tools/*
+      -> src/article/*
       -> src/preflight/*
       -> src/renderers/*
         -> src/renderers/{shared,upgraded,adaptive,informationStructure}/*
@@ -32,6 +33,7 @@ src/index.ts
 - `src/tools/*` contains one handler per tool.
 - `src/toolSchemas/*` contains MCP JSON schema declarations.
 - `src/adapters/*` contains compatibility and input-shaping helpers such as JSON string parsing.
+- `src/article/*` contains upstream article planning, section validation, and page assembly helpers for long-form article workflows.
 - `src/preflight/*` contains guidance and validation logic for non-final pre-render checks.
 
 ### Schemas
@@ -44,6 +46,12 @@ src/index.ts
 - `src/preflight/htmlRenderPreflight.ts` owns guidance, semantic readiness checks, schema diagnostic shaping, and dry-run summaries for render preflight tools.
 - Preflight modules may import schemas and renderer facades to validate renderability, but must not return final HTML.
 - Tool handlers should keep only MCP plumbing and delegate preflight behavior to this package.
+
+### Article harness
+
+- `src/article/*` owns article planning, article plan validation, section draft validation, and final page assembly before render preflight.
+- Article harness modules may import schemas and render-preflight-ready page contracts, but must not return final HTML.
+- Tool handlers should keep only MCP plumbing and delegate article-harness behavior to this package.
 
 ## Renderer layout
 
@@ -148,6 +156,15 @@ Current compatibility modules at the top of `src/styles` are kept so older impor
 3. Add a handler in `src/tools/*`.
 4. Register the handler/schema in `src/server/createMcpServer.ts`.
 5. Add focused tests if behavior changes.
+
+### Add a new article harness stage
+
+1. Add or update runtime contracts in `src/schemas/articleHtmlGenerationSchema.ts`.
+2. Add MCP schema declarations in `src/toolSchemas/articleHtmlGenerationInputSchemas.ts`.
+3. Add deterministic guidance, validation, or assembly logic in `src/article/*`.
+4. Add a handler in `src/tools/*Article*Tool.ts`.
+5. Register the handler/schema in `src/server/toolRegistry.ts`.
+6. Add focused tests covering the article plan -> section -> assembly flow.
 
 ### Add a new upgraded block type
 

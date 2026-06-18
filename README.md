@@ -2,7 +2,12 @@
 
 面向 Cherry Studio 的本地 MCP Server，用于把完整结构化页面一次性渲染成可直接显示在对话消息里的 HTML 片段。
 
-当前版本暴露两个渲染前预检工具和四个最终渲染工具：
+当前版本暴露四个文章 Harness 工具、两个渲染前预检工具和四个最终渲染工具：
+
+- `guide_article_html_generation`：文章生成前的规划工具。模型完成素材阅读后调用它，获得文章类型、信息保留比例、目标信息结构、章节任务、表达计划和审核清单。它不搜索、不写正文、不渲染 HTML。
+- `validate_article_html_plan`：文章计划检校工具。模型确认章节计划前调用它，检查标题、Brief、章节覆盖、表达计划和验收项是否完整。它只返回 JSON 诊断。
+- `validate_article_section_draft`：分段草稿检校工具。模型按计划写完某一节后调用它，检查 sectionId、sourceCoverage、表达模块和 schema 是否匹配计划。它不渲染 HTML。
+- `assemble_article_html_page`：文章组装工具。模型完成并检校各节后调用它，把计划和分段草稿组装成 `render_information_structure_html` 可用的 `page` JSON。它只返回组装结果和诊断，不返回最终 HTML。
 
 - `guide_html_render_page`：渲染前指导工具。模型在生成 `render_adaptive_theme_html` 或 `render_information_structure_html` 的 `page` JSON 前先调用它，获得推荐的目标工具、信息结构、内容类型、视觉画像、表达策略、语义表达顺序、页面骨架和生成规则。它不渲染最终 HTML。
 - `validate_html_render_page`：渲染前检校工具。模型生成 `page` JSON 后、最终渲染前调用它，快速检查 schema 错误、常见生成错误、结构/主题/策略漂移、Markdown-heavy 富文本和 dry-run 可渲染性。它只返回 JSON 诊断，不返回最终 HTML。
@@ -12,7 +17,7 @@
 - `render_adaptive_theme_html`：自适应主题最终一次性 HTML 渲染。它从“按内容类型换皮”升级为主题感知的信息表达系统：会根据 `contentTypes` / `styleProfile` 自动选择更合适的信息结构，例如新闻倒金字塔、决策简报、学术证据、工作坊路径、观点论证或精选清单。优先使用 `expression` / `expressions` 描述语义，原有 `blocks` 仍保持兼容。
 - `render_information_structure_html`：信息结构升级版一次性 HTML 渲染。它参考 `信息结构调整.md`，在 `render_adaptive_theme_html` 的自适应表达基础上显式支持新闻、研究、科普、对比、教程、清单、观点七类信息骨架，并自动匹配对应的视觉风格与表达策略。
 
-这个项目不再默认暴露逐段渲染、外部预览、导出文件等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。新增预检工具只返回指导或诊断 JSON，最终 HTML 仍由最终渲染工具一次性输出。
+这个项目不再默认暴露逐段渲染、外部预览、导出文件等工具，避免模型在生成中途分段调用工具，导致 HTML 页面被工具卡片、思考内容或普通文本打断。新增文章 Harness 和预检工具只返回指导、诊断或最终 `page` JSON，最终 HTML 仍由最终渲染工具一次性输出。
 
 ## 安装与构建
 
@@ -64,6 +69,18 @@ npm run build
 - 工作目录：`E:/Project/AI/HTMLRenderMCP`
 
 ## 推荐提示词
+
+Article Harness 长文稳定生成流程，推荐用于“先规划、再分段、再终渲染”的文章任务：
+
+```text
+请先完成全部搜索、阅读、分析和素材整理，不要在搜索过程中调用 html-render-mcp。
+整理完成后，先调用 guide_article_html_generation 获取文章计划骨架，包括 articleType、retentionTarget、targetStructure、sections、expressionPlan 和 reviewChecklist。
+根据返回的计划补全 brief 和各 section 任务，然后调用 validate_article_html_plan 检查计划。
+计划通过后，按 section 逐段撰写结构化草稿；每写完一节，调用 validate_article_section_draft 检查 sectionId、sourceCoverage、expressions / blocks 是否符合计划。
+所有分段都通过后，调用 assemble_article_html_page 组装最终 page JSON。
+随后调用 validate_html_render_page 做最终渲染前检校；只有当 readyToRender: true 时，才最后调用一次 render_information_structure_html。
+最终回复只输出最终渲染工具返回的完整连续 HTML 片段，不要输出中间 JSON，不要使用 Markdown 代码块包裹 HTML，不要一段一段渲染。
+```
 
 预检稳定渲染流程，推荐用于 `render_adaptive_theme_html` / `render_information_structure_html`：
 
